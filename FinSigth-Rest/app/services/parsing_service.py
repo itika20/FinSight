@@ -205,7 +205,7 @@ def parse_date(value: str) -> Optional[str]:
             continue
     return None
 
-def normalise_dataframe(df: pd.DataFrame, column_map: dict) -> list[dict]:
+def normalise_dataframe(df: pd.DataFrame, column_map: dict) -> tuple[list[dict], int]:
     """
     Takes raw dataframe and column mapping from GPT.
     Returns list of normalised transaction dicts.
@@ -347,11 +347,11 @@ def parse_csv(file_bytes: bytes) -> list[dict]:
         # Drop completely empty rows and columns
         df = df.dropna(how='all').dropna(axis=1, how='all')
 
-        # Strip whitespace from all string values
-        df = df.apply(lambda col: col.str.strip() if col.dtype == 'object' else col)
-
         # Strip whitespace from column names
         df.columns = df.columns.str.strip()
+
+        # Strip whitespace from all string values
+        df = df.apply(lambda col: col.str.strip() if col.dtype == 'object' else col)
 
         print(f"=== CSV PARSE DEBUG ===")
         print(f"Columns after cleaning: {list(df.columns)}")
@@ -392,7 +392,7 @@ def parse_csv(file_bytes: bytes) -> list[dict]:
 # PDF PARSING
 # ─────────────────────────────────────────────
 
-def parse_pdf(file_bytes: bytes) -> list[dict]:
+def parse_pdf(file_bytes: bytes) -> tuple[list[dict], int]:
     """
     Extracts tables from PDF using pdfplumber.
     Concatenates tables from all pages.
@@ -466,7 +466,7 @@ def parse_pdf(file_bytes: bytes) -> list[dict]:
 # MAIN ENTRY POINT
 # ─────────────────────────────────────────────
 
-def parse_statement(file_bytes: bytes, file_type: str) -> list[dict]:
+def parse_statement(file_bytes: bytes, file_type: str) -> tuple[list[dict], int]:
     """
     Routes to correct parser based on file type.
     Returns list of normalised transaction dicts.
