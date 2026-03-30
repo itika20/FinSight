@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { uploadStatementApi } from '../api/upload'
+import type { Transaction } from '../models'
 
 export type UploadState =
   | 'idle'
@@ -9,7 +10,7 @@ export type UploadState =
   | 'success'
   | 'error'
 
-export const useUpload = (onUploadSuccess: (transactionCount: number) => void) => {
+export const useUpload = (onUploadSuccess: (transactions: Transaction[]) => void) => {
   const [uploadState, setUploadState] = useState<UploadState>('idle')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
@@ -46,8 +47,9 @@ export const useUpload = (onUploadSuccess: (transactionCount: number) => void) =
       setTransactionCount(response.transaction_count)
       setUploadState('success')
 
-      // Notify parent (dashboard) that upload succeeded
-      onUploadSuccess(response.transaction_count)
+      // Notify parent (dashboard) that upload succeeded with the transactions
+      // Dashboard will merge them client-side without refetching
+      onUploadSuccess(response.transactions)
 
     } catch (error: any) {
       const status = error?.response?.status

@@ -12,3 +12,31 @@ export interface AuthContextType {
   login: (token: string) => Promise<void>  // takes token, fetches user, sets state
   logout: () => void       // clears everything
 }
+
+export interface Transaction {
+  transaction_id: string
+  date: string             // YYYY-MM-DD
+  description: string
+  amount: number           // positive for credit, negative for debit
+  type: 'credit' | 'debit'
+  balance: number | null
+  category?: string | null
+  anomaly_score?: number | null
+  is_anomaly?: boolean | null
+}
+
+export interface DateRange {
+  from: string | null      // YYYY-MM-DD
+  to: string | null        // YYYY-MM-DD
+}
+
+export interface TransactionContextType {
+  transactions: Transaction[]
+  totalCount: number
+  dateRange: DateRange
+  isLoading: boolean
+  error: string | null
+  loadTransactions: () => Promise<void>
+  addTransactions: (newTransactions: Transaction[]) => void
+  clearError: () => void
+}

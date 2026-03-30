@@ -19,11 +19,15 @@ async def upload_statement(
     file: UploadFile = File(...),
     current_user=Depends(get_current_user)
 ):
+    
+    print(f"ENDPOINT HIT — file: {file.filename}, content_type: {file.content_type}")
     user_id = str(current_user['id'])
+    print(f"user_id: {user_id}")
 
     # Read file into memory — never touches disk
     file_bytes = await file.read()
     file_size = len(file_bytes)
+    print(f"file_bytes read: {file_size} bytes")
 
     # Validate type and size — raises 400 if invalid
     file_type = validate_file(
@@ -31,10 +35,12 @@ async def upload_statement(
         content_type=file.content_type,
         file_size=file_size
     )
+    print(f"validate_file passed, file_type: {file_type}")
 
     # Open ONE database connection for the entire operation
     # This ensures the whole thing is atomic — all or nothing
     with get_db() as conn:
+        print("DB connection opened")
         # Step 1 — Create upload record BEFORE parsing
         # We need the upload_id to associate transactions with this upload
         upload_id = create_upload_record(
@@ -43,25 +49,44 @@ async def upload_statement(
             filename=file.filename,
             file_type=file_type
         )
+        print(f"upload_id created: {upload_id}")
 
         try:
             # Step 2 — Parse the file (CPU work, no DB)
             transactions, skipped_count = parse_statement(file_bytes, file_type)
 
+            # DEBUG — add this temporarily
+            print(f"Parsed {len(transactions)} transactions, skipped {skipped_count}")
+            if transactions:
+                print("First transaction:", transactions[0])
+                print("Last transaction:", transactions[-1])
+            # Check every transaction for missing required fields
+            for i, t in enumerate(transactions):
+                missing = []
+                if not t.get("transaction_id"): missing.append("transaction_id")
+                if not t.get("date"):           missing.append("date")
+                if not t.get("description"):    missing.append("description")
+                if t.get("amount") is None:     missing.append("amount")
+                if not t.get("type"):           missing.append("type")
+                if missing:
+                    print(f"Row {i} missing fields: {missing} → {t}")
+            
             # Step 3 — Bulk store all transactions
             store_transactions(conn, user_id, upload_id, transactions)
 
             # Step 4 — Mark upload as completed
             update_upload_success(conn, upload_id, len(transactions))
 
-        except HTTPException:
+        except HTTPException as e:
             # Parsing or storage failed — mark upload as failed
             # get_db() will rollback the transaction automatically
+            print(f"HTTPException caught in endpoint: {e.status_code} — {e.detail}")
             update_upload_failed(conn, upload_id)
             raise   # re-raise the original error to return to frontend
 
-        except Exception:
+        except Exception as e:
             update_upload_failed(conn, upload_id)
+            print(f"ERROR: {type(e).__name__}: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail={

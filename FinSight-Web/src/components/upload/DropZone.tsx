@@ -6,16 +6,16 @@ interface DropZoneProps {
   disabled: boolean                   // true while uploading
 }
 
-const ACCEPTED_TYPES = ['text/csv', 'application/pdf']
+const ACCEPTED_TYPES = ['application/pdf']
 const MAX_SIZE_MB = 10
 
 const validateFile = (file: File): string | null => {
-  // Check type — also check extension as fallback for CSV
+  // Check type — only PDF files are supported
   const isValidType =
-    ACCEPTED_TYPES.includes(file.type) || file.name.endsWith('.csv')
+    ACCEPTED_TYPES.includes(file.type) || file.name.endsWith('.pdf')
 
   if (!isValidType) {
-    return 'Only CSV and PDF files are supported'
+    return 'Only PDF files are supported'
   }
 
   // Check size
@@ -112,7 +112,7 @@ const DropZone = ({ onFileSelect, onError, disabled }: DropZoneProps) => {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv,.pdf"
+        accept=".pdf"
         onChange={handleInputChange}
         className="hidden"
         disabled={disabled}

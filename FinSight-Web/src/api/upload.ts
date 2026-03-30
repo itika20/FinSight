@@ -1,10 +1,18 @@
 import api from './axios'
+import type { Transaction, DateRange } from '../models'
 
 export interface UploadResponse {
   message: string
   upload_id: string
   transaction_count: number
   filename: string
+  transactions: Transaction[]
+}
+
+export interface TransactionListResponse {
+  transactions: Transaction[]
+  total_count: number
+  date_range: DateRange
 }
 
 export const uploadStatementApi = async (
@@ -30,5 +38,13 @@ export const uploadStatementApi = async (
     }
   })
 
+  return response.data
+}
+
+export const getTransactionsApi = async (): Promise<TransactionListResponse> => {
+  // Fetch all transactions for the logged-in user
+  // No filters — just get everything
+  // JWT token is attached automatically by axios interceptor
+  const response = await api.get<TransactionListResponse>('/upload/transactions')
   return response.data
 }

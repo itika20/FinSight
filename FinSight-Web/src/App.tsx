@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { TransactionProvider } from './context/TransactionContext'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 import LoginPage from './pages/LoginPage.tsx'
 import SignupPage from './pages/SignupPage.tsx'
@@ -10,29 +11,32 @@ function App() {
   return (
     // AuthProvider wraps everything — makes auth state available app-wide
     <AuthProvider>
-      <Routes>
-        {/* Public routes — redirect to dashboard if already logged in */}
-        <Route path="/login" element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        } />
-        <Route path="/signup" element={
-          <PublicRoute>
-            <SignupPage />
-          </PublicRoute>
-        } />
+      {/* TransactionProvider wraps everything below auth — manages transaction state */}
+      <TransactionProvider>
+        <Routes>
+          {/* Public routes — redirect to dashboard if already logged in */}
+          <Route path="/login" element={
+            <PublicRoute>
+              <LoginPage />
+            </PublicRoute>
+          } />
+          <Route path="/signup" element={
+            <PublicRoute>
+              <SignupPage />
+            </PublicRoute>
+          } />
 
-        {/* Protected routes — redirect to login if not authenticated */}
-        <Route path="/dashboard" element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        } />
+          {/* Protected routes — redirect to login if not authenticated */}
+          <Route path="/dashboard" element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } />
 
-        {/* Default redirect */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
-      </Routes>
+          {/* Default redirect */}
+          <Route path="/" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </TransactionProvider>
     </AuthProvider>
   )
 }

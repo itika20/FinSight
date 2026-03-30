@@ -253,7 +253,7 @@ const UploadPage = () => {
 
         {/* Supported formats notice */}
         <p className="text-xs text-center text-gray-400 mt-4">
-          Supports CSV and PDF. Accepted banks: HDFC, SBI, ICICI.{' '}
+          Supports PDF. Accepted banks: HDFC, SBI, ICICI.{' '}
           <button
             onClick={() => setIsPrivacyModalOpen(true)}
             className="text-blue-400 underline underline-offset-2 hover:text-blue-600 transition-colors"

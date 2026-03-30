@@ -1,19 +1,29 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
+import { useTransactions } from '../hooks/useTransactions'
 import UploadModal from '../components/upload/UploadModal'
 
 const DashboardPage = () => {
   const { user, logout } = useAuth()
+  const { totalCount, isLoading, error, loadTransactions, clearError, addTransactions } = useTransactions()
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
-  const [hasData, setHasData] = useState(false)
-  const [transactionCount, setTransactionCount] = useState(0)
 
-  const handleUploadSuccess = (count: number) => {
-    setTransactionCount(count)
-    setHasData(true)
+  // Load transactions when component mounts
+  // This handles both first-time load and re-login scenarios
+  useEffect(() => {
+    loadTransactions()
+  }, [loadTransactions])
+
+  const handleUploadSuccess = (transactions: any[]) => {
+    // Merge new transactions with existing list (client-side)
+    // This avoids refetching everything from the backend
+    addTransactions(transactions)
     setIsUploadModalOpen(false)
   }
+
+  // Determine if we have data to display
+  const hasData = totalCount > 0
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -45,7 +55,7 @@ const DashboardPage = () => {
       <div className="px-6 py-8">
 
         {/* ── EMPTY STATE ── */}
-        {!hasData && (
+        {!hasData && !isLoading && !error && (
           <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
             <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center">
               <svg className="w-12 h-12 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -72,8 +82,51 @@ const DashboardPage = () => {
           </div>
         )}
 
+        {/* ── LOADING STATE ── */}
+        {isLoading && (
+          <div className="flex flex-col gap-6">
+            {/* Skeleton stats cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((index) => (
+                <div key={index} className="bg-white rounded-xl border border-gray-100 p-5">
+                  <div className="h-4 bg-gray-200 rounded w-24 animate-pulse" />
+                  <div className="h-8 bg-gray-200 rounded w-32 mt-3 animate-pulse" />
+                </div>
+              ))}
+            </div>
+            {/* Skeleton chart */}
+            <div className="bg-white rounded-xl border border-gray-100 p-6 flex items-center justify-center h-64">
+              <div className="w-full h-full bg-gray-100 rounded animate-pulse" />
+            </div>
+          </div>
+        )}
+
+        {/* ── ERROR STATE ── */}
+        {error && !isLoading && (
+          <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="text-center">
+              <p className="text-base font-semibold text-gray-900">Failed to load transactions</p>
+              <p className="text-sm text-gray-500 mt-1">{error}</p>
+            </div>
+            <button
+              onClick={() => {
+                clearError()
+                loadTransactions()
+              }}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* ── HAS DATA ── */}
-        {hasData && (
+        {hasData && !isLoading && (
           <div className="flex flex-col gap-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {['Total Transactions', 'Total Spend', 'Top Category', 'Anomalies'].map((label) => (
@@ -82,7 +135,7 @@ const DashboardPage = () => {
                     {label}
                   </p>
                   <p className="text-2xl font-bold text-gray-800 mt-2">
-                    {label === 'Total Transactions' ? transactionCount : '—'}
+                    {label === 'Total Transactions' ? totalCount : '—'}
                   </p>
                 </div>
               ))}

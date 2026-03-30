@@ -2,12 +2,14 @@ import { useUpload } from '../../hooks/useUpload'
 import UploadContent from './UploadContent'
 import PrivacyModal from './PrivacyModal'
 import { useState } from 'react'
+import type { Transaction } from '../../models'
 
 interface UploadModalProps {
   isOpen: boolean
   onClose: () => void
-  // Called after successful upload — dashboard uses this to refresh data
-  onUploadSuccess: (transactionCount: number) => void
+  // Called after successful upload with transactions array
+  // Dashboard uses this to merge new transactions client-side
+  onUploadSuccess: (transactions: Transaction[]) => void
 }
 
 const UploadModal = ({ isOpen, onClose, onUploadSuccess }: UploadModalProps) => {
@@ -58,7 +60,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }: UploadModalProps) => 
                 Upload Bank Statement
               </h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Supports CSV and PDF — HDFC, SBI, ICICI.{' '}
+                Supports PDF — HDFC, SBI, ICICI.{' '}
                 <button
                   onClick={() => setIsPrivacyModalOpen(true)}
                   className="text-blue-400 underline underline-offset-2 hover:text-blue-600"
