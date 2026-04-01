@@ -1,7 +1,7 @@
 import { useUpload } from '../../hooks/useUpload'
 import UploadContent from './UploadContent'
 import PrivacyModal from './PrivacyModal'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Transaction } from '../../models'
 
 interface UploadModalProps {
@@ -26,19 +26,44 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }: UploadModalProps) => 
     handleUpload,
     reset
   } = useUpload(onUploadSuccess)
-  // useUpload calls onUploadSuccess automatically when upload completes
-  // Dashboard receives that callback and can react — close modal, refresh data
+
+  // Modal is locked while upload is in progress (uploading or parsing state)
+  const isUploadInProgress = uploadState === 'uploading' || uploadState === 'parsing'
+
+  // Block Escape key while upload is in progress
+  useEffect(() => {
+    if (!isOpen || !isUploadInProgress) return
+
+    const handleEscapeKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscapeKey)
+    return () => window.removeEventListener('keydown', handleEscapeKey)
+  }, [isOpen, isUploadInProgress])
 
   if (!isOpen) return null
 
   const handleClose = () => {
-    reset()     // clear upload state when modal closes
+    // Prevent closing while upload is in progress
+    if (isUploadInProgress) return
+
+    reset()
     onClose()
+  }
+
+  const handleBackdropClick = () => {
+    // Prevent backdrop click from closing modal while upload is in progress
+    if (isUploadInProgress) return
+
+    handleClose()
   }
 
   const handleViewDashboard = () => {
     reset()
-    onClose()   // just close modal — dashboard is already behind it
+    onClose()
   }
 
   return (
@@ -46,7 +71,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }: UploadModalProps) => 
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/40 z-40 flex items-center justify-center px-4"
-        onClick={handleClose}
+        onClick={handleBackdropClick}
       >
         {/* Modal */}
         <div
@@ -63,15 +88,23 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }: UploadModalProps) => 
                 Supports PDF — HDFC, SBI, ICICI.{' '}
                 <button
                   onClick={() => setIsPrivacyModalOpen(true)}
-                  className="text-blue-400 underline underline-offset-2 hover:text-blue-600"
+                  disabled={isUploadInProgress}
+                  className="text-blue-400 underline underline-offset-2 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Your data is never stored.
                 </button>
               </p>
             </div>
+            {/* Close button — disabled while upload is in progress */}
             <button
               onClick={handleClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              disabled={isUploadInProgress}
+              className={`transition-colors ${
+                isUploadInProgress
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+              aria-label="Close modal"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

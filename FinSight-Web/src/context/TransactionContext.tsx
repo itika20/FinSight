@@ -42,9 +42,11 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
     // Update date range if needed
     if (newTransactions.length > 0) {
       const newDates = newTransactions.map((t) => t.date).sort()
+      const newFromDate = newDates[0]
+      const newToDate = newDates[newDates.length - 1]
       setDateRange((prev) => ({
-        from: prev.from ? Math.min(prev.from, newDates[0]) : newDates[0],
-        to: prev.to ? Math.max(prev.to, newDates[newDates.length - 1]) : newDates[newDates.length - 1]
+        from: prev.from ? (newFromDate < prev.from ? newFromDate : prev.from) : newFromDate,
+        to: prev.to ? (newToDate > prev.to ? newToDate : prev.to) : newToDate
       }))
     }
   }, [])
