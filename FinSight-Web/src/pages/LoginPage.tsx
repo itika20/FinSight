@@ -1,12 +1,40 @@
+/**
+ * LoginPage Component - User Authentication
+ *
+ * Displays login form with email/password fields.
+ * Validates inputs client-side before calling backend.
+ * Handles both successful login and common error cases.
+ *
+ * Flow:
+ * 1. User enters email and password
+ * 2. Form validates fields on submit
+ * 3. POST /auth/login to backend
+ * 4. Backend returns JWT token
+ * 5. AuthContext saves token and fetches user info
+ * 6. Automatically redirects to /dashboard
+ * 7. If error, displays form-level message
+ *
+ * Validation:
+ * - Email: required, must be valid email format
+ * - Password: required, minimum 1 character
+ * - Both: live validation shows error only if user has typed
+ *
+ * Error Handling:
+ * - 401: Invalid credentials (same message for both failures)
+ * - 404: No account found with email
+ * - Other: Generic server error
+ */
+
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { loginApi } from '../api/auth'
+import { VALIDATION_RULES } from '../constants/config'
 import Input from '../shared/Input'
 import Button from '../shared/Button'
 
-// Regex for email format validation
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// Email validation regex from constants
+const EMAIL_REGEX = VALIDATION_RULES.emailRegex
 
 const LoginPage = () => {
   // Form field state
@@ -64,7 +92,20 @@ const LoginPage = () => {
     if (passwordError) validatePassword(value)
   }
 
+  /**
+   * Handler - Submit login form.
+   *
+   * Process:
+   * 1. Validate both email and password (show all errors at once)
+   * 2. Call POST /auth/login with credentials
+   * 3. Backend validates and returns JWT token
+   * 4. Pass token to AuthContext.login()
+   * 5. AuthContext saves token, fetches user info
+   * 6. Redirect to /dashboard
+   * 7. On error, extract HTTP status and show appropriate message
+   */
   const handleSubmit = async () => {
+    console.log('[LoginPage] Form submitted')
     // Clear any previous form-level error
     setFormError('')
 
@@ -74,24 +115,32 @@ const LoginPage = () => {
     const isPasswordValid = validatePassword(password)
 
     // If any field is invalid, don't call API
-    if (!isEmailValid || !isPasswordValid) return
+    if (!isEmailValid || !isPasswordValid) {
+      console.log('[LoginPage] Validation failed')
+      return
+    }
 
+    console.log('[LoginPage] Validation passed, calling login API')
     // Start loading — disables button, prevents double submit
     setIsLoading(true)
 
     try {
       // Call POST /auth/login
+      console.log('[LoginPage] POST /auth/login')
       const response = await loginApi({ email, password })
 
       // Hand token to AuthContext — it will fetch user info and set state
+      console.log('[LoginPage] Token received, updating AuthContext')
       await login(response.access_token)
 
+      console.log('[LoginPage] Login complete, navigating to dashboard')
       // Auth state is now set — navigate to dashboard
       navigate('/dashboard')
 
     } catch (error: any) {
       // Backend returned an error — show at form level
       const status = error?.response?.status
+      console.warn('[LoginPage] Login failed:', status, error?.response?.data)
 
       if (status === 401) {
         // Wrong credentials

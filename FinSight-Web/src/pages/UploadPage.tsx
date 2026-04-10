@@ -1,3 +1,43 @@
+/**
+ * UploadPage Component - Bank Statement Upload Interface
+ *
+ * Full-page upload flow with visual state transitions.
+ * Used as both standalone page and within UploadModal component.
+ *
+ * State Machine:
+ * ```
+ * idle
+ *   ↓ (user selects file)
+ * selected (file info displayed, upload button shown)
+ *   ↓ (user clicks upload)
+ * uploading (progress bar 0-100%)
+ *   ↓ (upload completes at 100%)
+ * parsing (spinner, "Reading your statement...")
+ *   ↓ (15-30 seconds API call)
+ * success (checkmark, transaction count, action buttons)
+ *   ↓ (user clicks "View Dashboard" or "Upload Another")
+ *   │
+ *   └─→ idle or navigate(/dashboard)
+ *
+ * error (any state) on validation/upload/parsing failure
+ *   ↓ (user clicks "Try Again")
+ *   └─→ idle
+ * ```
+ *
+ * Phases:
+ * - **Idle**: Show DropZone, waiting for file selection
+ * - **Selected**: File validated, show file info, enable upload button
+ * - **Uploading**: File transmission, show progress bar (0-100%)
+ * - **Parsing**: After 100% upload, backend parsing (15-30 seconds)
+ * - **Success**: Show transaction count, options to view or upload more
+ * - **Error**: Show error message, enable retry
+ *
+ * Integration:
+ * - Can be used as full page (UploadPage.tsx)
+ * - Can be used in modal (UploadModal.tsx wraps it)
+ * - After upload, parent component gets transactions via callback
+ */
+
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DropZone, formatFileSize } from '../components/upload/DropZone'

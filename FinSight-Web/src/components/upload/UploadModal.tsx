@@ -1,3 +1,29 @@
+/**
+ * UploadModal Component - Bank Statement Upload Interface
+ *
+ * Purpose:
+ * - Displays modal dialog for uploading bank statements
+ * - Manages upload lifecycle: idle → selected → uploading → parsing → success/error
+ * - Prevents user interaction (Escape, backdrop clicks) while upload is in progress
+ * - Renders privacy disclosure modal on demand
+ *
+ * Architecture:
+ * - Uses useUpload() hook for upload state management
+ * - Renders UploadContent for upload UI (reusable component)
+ * - Hosts PrivacyModal inside to explain data handling
+ * - Blocks all close actions while uploading/parsing
+ *
+ * Data Flow:
+ * 1. UploadModal receives isOpen, onClose, onUploadSuccess from parent
+ * 2. useUpload() manages file selection → upload → parsing
+ * 3. After success, useUpload calls onUploadSuccess with Transaction[]
+ * 4. Parent (Dashboard) receives and merges transactions client-side
+ *
+ * Logging:
+ * - Upload progress tracked in useUpload hook
+ * - Errors logged and displayed in UploadContent
+ */
+
 import { useUpload } from '../../hooks/useUpload'
 import UploadContent from './UploadContent'
 import PrivacyModal from './PrivacyModal'

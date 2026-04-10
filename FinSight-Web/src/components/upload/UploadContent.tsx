@@ -1,3 +1,33 @@
+/**
+ * UploadContent Component - Upload State Machine UI
+ *
+ * Purpose:
+ * - Renders different UI based on upload state
+ * - Reusable across UploadModal (mounted) and UploadPage (standalone)
+ * - Manages 5-state flow: idle → selected → uploading → parsing → success/error
+ * - Handles file selection and user feedback
+ *
+ * State Rendering Logic:
+ * - IDLE: DropZone only (ready for file drag-drop)
+ * - SELECTED: DropZone + file preview + Upload button
+ * - UPLOADING: Progress bar with percentage
+ * - PARSING: Spinning loader while PDF is being parsed
+ * - SUCCESS: Transaction summary + "View Dashboard" button
+ * - ERROR: Error message + retry button
+ *
+ * Prop Pattern:
+ * - onFileSelect: Called when user selects file
+ * - onDropError: Called when drop validation fails
+ * - onUpload: Initiates API upload
+ * - onReset: Clears state for next upload
+ * - onViewDashboard: Optional — only used in modal context
+ *
+ * Accessibility:
+ * - Disabled file input during upload/parsing
+ * - Clear status messages for screen readers
+ * - Keyboard navigation support (Tab, Enter, Escape)
+ */
+
 import type { UploadState } from '../../hooks/useUpload'
 import { DropZone, formatFileSize } from './DropZone'
 

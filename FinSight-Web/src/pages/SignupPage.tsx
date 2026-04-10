@@ -1,16 +1,43 @@
+/**
+ * SignupPage Component - Account Creation
+ *
+ * Displays signup form for new user account creation.
+ * Validates inputs client-side before calling backend.
+ * Handles duplicate email detection and success confirmation.
+ *
+ * Account Creation Flow:
+ * 1. User enters email, password, confirm password
+ * 2. Form validates all fields
+ * 3. POST /auth/signup to backend
+ * 4. Backend creates account and hashes password
+ * 5. Show success screen for 2 seconds
+ * 6. Auto-redirect to /login (account created but not logged in)
+ * 7. User then logs in separately
+ *
+ * Password Requirements:
+ * - Minimum 7 characters
+ * - At least 1 uppercase letter
+ * - At least 1 number
+ * - Example: "MyPass123"
+ *
+ * Error Handling:
+ * - 409 Conflict: Email already exists
+ * - Validation: Show field-level errors immediately
+ */
+
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { signupApi } from '../api/auth'
+import { VALIDATION_RULES } from '../constants/config'
 import Input from '../shared/Input'
 import Button from '../shared/Button'
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const EMAIL_REGEX = VALIDATION_RULES.emailRegex
 
-// Password must be min 7 chars, at least one uppercase, at least one number
-const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d).{7,}$/
+// Password validation from constants
+const PASSWORD_REGEX = VALIDATION_RULES.passwordRegex
 
 const SignupPage = () => {
-    console.log('API URL:', import.meta.env.VITE_API_BASE_URL)
   const [email, setEmail] = useState<string>('')
   const [password, setPassword] = useState<string>('')
   const [confirmPassword, setConfirmPassword] = useState<string>('')
@@ -85,7 +112,19 @@ const SignupPage = () => {
     if (confirmPasswordError) validateConfirmPassword(value)
   }
 
+  /**
+   * Handler - Submit signup form and create account.
+   *
+   * Process:
+   * 1. Validate email, password, confirm password
+   * 2. Call POST /auth/signup
+   * 3. Backend creates account with hashed password
+   * 4. Show success screen for 2 seconds
+   * 5. Auto-redirect to /login
+   * 6. User must log in separately (no auto-login after signup)
+   */
   const handleSubmit = async () => {
+    console.log('[SignupPage] Signup form submitted')
     setFormError('')
 
     // Validate all three fields — all run so all errors show at once
@@ -93,21 +132,31 @@ const SignupPage = () => {
     const isPasswordValid = validatePassword(password)
     const isConfirmValid = validateConfirmPassword(confirmPassword)
 
-    if (!isEmailValid || !isPasswordValid || !isConfirmValid) return
+    if (!isEmailValid || !isPasswordValid || !isConfirmValid) {
+      console.log('[SignupPage] Validation failed')
+      return
+    }
 
+    console.log('[SignupPage] Validation passed, calling signup API')
     setIsLoading(true)
 
     try {
       // Call POST /auth/signup — only send email and password
       // Backend generates the UUID — frontend never creates IDs
+      console.log('[SignupPage] POST /auth/signup')
       await signupApi({ email, password })
 
+      console.log('[SignupPage] Account created successfully')
       // Show success message briefly then redirect to login
       setIsSuccess(true)
-      setTimeout(() => navigate('/login'), 2000)
+      setTimeout(() => {
+        console.log('[SignupPage] Auto-redirecting to login')
+        navigate('/login')
+      }, 2000)
 
     } catch (error: any) {
       const status = error?.response?.status
+      console.warn('[SignupPage] Signup failed:', status, error?.response?.data)
 
       if (status === 409) {
         // Email already registered

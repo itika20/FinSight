@@ -1,3 +1,30 @@
+/**
+ * PrivacyModal Component - Data Privacy Disclosure
+ *
+ * Purpose:
+ * - Educates users on data handling practices
+ * - Reduces concerns about uploading financial statements
+ * - Explains derivative storage strategy (amounts/dates, not raw text)
+ * - Shows data isolation by account
+ *
+ * Information Conveyed:
+ * 1. Statement processed in-memory, never written to disk
+ * 2. Only derived data saved (categories, amounts, dates)
+ * 3. Transaction descriptions stored for AI assistant
+ * 4. All data isolated to user account (no access to others)
+ * 5. User can delete data anytime from settings
+ *
+ * Usage:
+ * - Triggered from UploadModal privacy link
+ * - Rendered in modal stacked above UploadModal (z-50)
+ * - Optional: Use within any component needing privacy info
+ *
+ * Accessibility:
+ * - Closes on backdrop click or button click
+ * - SVG close icon matches system standards
+ * - High contrast text for readability
+ */
+
 interface PrivacyModalProps {
   isOpen: boolean
   onClose: () => void

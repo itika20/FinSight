@@ -1,3 +1,34 @@
+/**
+ * DashboardPage Component - Transaction Management Dashboard
+ *
+ * Main page after login. Displays:
+ * - All parsed transactions (from all uploads)
+ * - Summary statistics (total count, etc.)
+ * - File upload interface via modal
+ * - User profile and logout button
+ *
+ * States:
+ * - **Empty**: No transactions yet, shows CTA to upload first statement
+ * - **Loading**: Fetching transactions from backend, shows skeleton UI
+ * - **Error**: Load failed, shows error message with retry button
+ * - **Loaded**: Transactions display with stats and upload button
+ *
+ * Data Flow:
+ * 1. Component mounts → useTransactions.loadTransactions()
+ * 2. Backend /GET /upload/transactions
+ * 3. Display all user transactions in state
+ * 4. User uploads new statement → UploadModal
+ * 5. Modal calls onUploadSuccess() → addTransactions()
+ * 6. Client-side merge (no refetch)
+ * 7. Transaction list updates instantly
+ *
+ * Upload Integration:
+ * - New transactions prepended to list
+ * - Total count incremented
+ * - Date range updated if needed
+ * - No need to reload entire page
+ */
+
 import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { useTransactions } from '../hooks/useTransactions'
