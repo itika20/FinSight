@@ -34,7 +34,7 @@ import Input from '../shared/Input'
 import Button from '../shared/Button'
 
 // Email validation regex from constants
-const EMAIL_REGEX = VALIDATION_RULES.emailRegex
+const EMAIL_REGEX = VALIDATION_RULES.EMAIL.PATTERN
 
 const LoginPage = () => {
   // Form field state

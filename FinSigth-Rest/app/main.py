@@ -52,6 +52,8 @@ def configure_logging():
     logging.getLogger("psycopg2").setLevel(logging.WARNING)
     logging.getLogger("pdfminer").setLevel(logging.WARNING)
     logging.getLogger("pypdf").setLevel(logging.WARNING)
+    logging.getLogger("python_multipart").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # Initialize logging before creating logger
 configure_logging()

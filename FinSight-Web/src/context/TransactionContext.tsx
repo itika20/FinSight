@@ -20,7 +20,7 @@
 
 import { createContext, useState, useCallback, type ReactNode } from 'react'
 import type { Transaction, DateRange, TransactionContextType } from '../models'
-import { getTransactionsApi } from '../api/upload'
+import { getTransactionsApi, updateCategoryApi } from '../api/upload'
 
 /**
  * React Context for Transaction State
@@ -208,6 +208,47 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
   }, [])
 
   // ============================================================================
+  // UPDATE TRANSACTION CATEGORY
+  // ============================================================================
+
+  /**
+   * Update a single transaction's category and persist it to the backend.
+   *
+   * Called when a user corrects an ML-assigned category from the dashboard.
+   *
+   * Process:
+   * 1. Call PATCH /upload/transactions/{id}/category
+   * 2. Backend updates DB + saves VPA → category to user_vpa_memory
+   *    (so future uploads with the same merchant auto-categorise correctly)
+   * 3. Update local state immediately so the UI reflects the change
+   *    without a full refetch
+   *
+   * The confidence is set to 'user_confirmed' locally to match what the
+   * backend stores, so the confidence badge updates instantly.
+   *
+   * @throws Re-throws API errors so the calling component can show feedback
+   */
+  const updateTransactionCategory = useCallback(async (
+    transactionId: string,
+    category: string
+  ): Promise<void> => {
+    console.log(`[TransactionContext] Updating category: txn=${transactionId} → ${category}`)
+
+    await updateCategoryApi(transactionId, category)
+
+    // Update local state — marks as user_confirmed so confidence badge updates instantly
+    setTransactions(prev =>
+      prev.map(t =>
+        t.transaction_id === transactionId
+          ? { ...t, category, confidence: 'user_confirmed' }
+          : t
+      )
+    )
+
+    console.log(`[TransactionContext] Category updated locally: ${transactionId} → ${category}`)
+  }, [])
+
+  // ============================================================================
   // CONTEXT VALUE
   // ============================================================================
 
@@ -224,6 +265,7 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
     error,
     loadTransactions,
     addTransactions,
+    updateTransactionCategory,
     clearError
   }
 

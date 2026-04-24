@@ -75,6 +75,39 @@ export const uploadStatementApi = async (
   return response.data
 }
 
+export interface CategoryUpdateResponse {
+  message: string
+  transaction_id: string
+  category: string
+  vpa_saved: boolean
+}
+
+/**
+ * Update Transaction Category - Corrects the ML-assigned category for a transaction.
+ *
+ * The backend will:
+ * 1. Update the transaction's category and mark confidence as 'user_confirmed'
+ * 2. Extract the UPI VPA from the transaction description
+ * 3. Save the VPA → category mapping to user_vpa_memory
+ *    (future uploads with the same merchant will auto-categorise correctly)
+ *
+ * @param transactionId - UUID of the transaction to update
+ * @param category - New category string (must be a valid TRANSACTION_CATEGORIES value)
+ *
+ * @returns Promise<CategoryUpdateResponse> - Confirmation with vpa_saved flag
+ *
+ * @throws HTTPException - 400 if category is not in the valid list
+ * @throws HTTPException - 404 if transaction not found or doesn't belong to user
+ */
+export const updateCategoryApi = async (
+  transactionId: string,
+  category: string
+): Promise<CategoryUpdateResponse> => {
+  const url = UPLOAD_ENDPOINTS.UPDATE_CATEGORY.replace('{id}', transactionId)
+  const response = await api.patch<CategoryUpdateResponse>(url, { category })
+  return response.data
+}
+
 /**
  * Get User Transactions - Retrieves all transactions for authenticated user.
  * 

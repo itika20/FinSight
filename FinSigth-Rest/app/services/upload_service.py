@@ -237,6 +237,7 @@ def get_transactions(
             type,
             balance,
             category,
+            confidence,
             anomaly_score,
             is_anomaly
         FROM transactions

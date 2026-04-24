@@ -33,6 +33,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { useTransactions } from '../hooks/useTransactions'
 import UploadModal from '../components/upload/UploadModal'
+import TransactionTable from '../components/transactions/TransactionTable'
 
 const DashboardPage = () => {
   const { user, logout } = useAuth()
@@ -171,9 +172,7 @@ const DashboardPage = () => {
                 </div>
               ))}
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-6 flex items-center justify-center h-64">
-              <p className="text-gray-300 text-sm">Charts coming soon</p>
-            </div>
+            <TransactionTable />
           </div>
         )}
 

@@ -185,212 +185,232 @@ def parse_pdf(file_bytes: bytes) -> tuple[list[dict], int]:
 def _parse_pdf_llm(file_bytes: bytes) -> tuple[list[dict], int]:
     """
     Internal: Extracts transactions from PDF using GPT-4o LLM.
-    
+
     Algorithm:
     1. Extract text from each PDF page
     2. Group pages into chunks (avoids hitting LLM token limits)
     3. Send each chunk to GPT-4o with a structured prompt
     4. Parse JSON response and normalize transactions
     5. Handle partial/truncated responses gracefully
-    
+
     Args:
         file_bytes: Raw PDF bytes
-        
+
     Returns:
         tuple: (transactions_list, skipped_count)
-        
+
     Raises:
         HTTPException: 422 if extraction fails or too few transactions found
     """
-    logger.info("Initializing PDF text extraction")
-    
-    # ── Step 1: Extract text from each page ──
-    pages_text = []
-    try:
-        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-            logger.debug(f"PDF opened: {len(pdf.pages)} pages")
-            for page_num, page in enumerate(pdf.pages, 1):
-                text = page.extract_text()
-                if text and text.strip():
-                    pages_text.append(text)
-                    logger.debug(f"Extracted page {page_num}: {len(text)} chars")
-    except Exception as e:
-        logger.error(f"Failed to extract PDF text: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"error": "parse_failed", "message": ERROR_PARSE_FAILED}
-        )
+    # ── MOCK MODE ─────────────────────────────────────────────────────────────
+    # OpenAI API call is disabled to avoid token costs during development/testing.
+    # Returns a fixed set of realistic mock transactions for any uploaded PDF.
+    # TO RESTORE: delete this block (everything up to END MOCK MODE) and
+    #             uncomment the real implementation below it.
+    logger.warning("[MOCK MODE] Skipping GPT-4o API call — returning mock transactions")
+    mock_transactions = [
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-01", "description": "ZOMATO ORDER#98234",             "amount": -450.00,   "type": "debit",  "balance": 52340.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-02", "description": "UPI/REF/120304/UPI/9898626148@ptaxis", "amount": -5000.00,  "type": "debit",  "balance": 47340.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-03", "description": "AMAZON.IN ORDER#405-1234567",    "amount": -1299.00,  "type": "debit",  "balance": 46041.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-04", "description": "SALARY CREDIT ACME CORP",        "amount": 85000.00,  "type": "credit", "balance": 131041.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-05", "description": "SWIGGY ORDER#SW998123",          "amount": -320.00,   "type": "debit",  "balance": 130721.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-06", "description": "IRCTC TRAIN BOOKING PNR#123456", "amount": -1450.00,  "type": "debit",  "balance": 129271.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-07", "description": "UPI/REF/bharatpe789012",         "amount": -180.00,   "type": "debit",  "balance": 129091.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-08", "description": "BIGBASKET ORDER#BB44512",        "amount": -2340.00,  "type": "debit",  "balance": 126751.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-10", "description": "AIRTEL POSTPAID BILL",           "amount": -999.00,   "type": "debit",  "balance": 125752.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-11", "description": "NEFT/HDFC0001234/RENT PAYMENT",  "amount": -25000.00, "type": "debit",  "balance": 100752.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-12", "description": "ZERODHA MUTUAL FUND SIP",        "amount": -10000.00, "type": "debit",  "balance": 90752.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-13", "description": "UBER TRIP BANGALORE",            "amount": -256.00,   "type": "debit",  "balance": 90496.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-14", "description": "STARBUCKS KORAMANGALA",          "amount": -520.00,   "type": "debit",  "balance": 89976.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-15", "description": "FREELANCE PAYMENT RECEIVED",     "amount": 15000.00,  "type": "credit", "balance": 104976.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-17", "description": "APOLLO PHARMACY",                "amount": -890.00,   "type": "debit",  "balance": 104086.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-18", "description": "FLIPKART ORDER#FK-9912345",      "amount": -3499.00,  "type": "debit",  "balance": 100587.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-19", "description": "HPCL FUEL STATION WHITEFIELD",   "amount": -3200.00,  "type": "debit",  "balance": 97387.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-20", "description": "LIC PREMIUM AUTO DEBIT",         "amount": -4500.00,  "type": "debit",  "balance": 92887.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-21", "description": "UDEMY COURSE PURCHASE",          "amount": -455.00,   "type": "debit",  "balance": 92432.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-22", "description": "BAJAJ FINSERV EMI",              "amount": -6200.00,  "type": "debit",  "balance": 86232.50},
+    ]
+    logger.info(f"[MOCK MODE] Returning {len(mock_transactions)} mock transactions")
+    return mock_transactions, 0
+    # ── END MOCK MODE ──────────────────────────────────────────────────────────
 
-    if not pages_text:
-        logger.warning("No extractable text found in PDF")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"error": "parse_failed", "message": "Could not extract text from PDF."}
-        )
-
-    # ── Step 2: Group pages into chunks for processing ──
-    # Avoids hitting LLM token limits by processing ~3 pages at a time
-    chunks = []
-    for i in range(0, len(pages_text), PAGES_PER_CHUNK):
-        chunk = '\n'.join(pages_text[i:i + PAGES_PER_CHUNK])
-        chunks.append(chunk)
-
-    logger.info(f"Created {len(chunks)} chunks from {len(pages_text)} pages")
-
-    # ── Step 3: LLM extraction prompt ──
-    # Instructs GPT-4o exactly how to parse the statement
-    prompt_template = """You are a bank statement parser. Extract ALL transactions from the text below.
-
-Return ONLY a valid JSON array. No explanation, no markdown, no code blocks.
-Each object must have exactly these fields:
-- "date": string in YYYY-MM-DD format
-- "description": string (the narration/description of the transaction)
-- "amount": number (POSITIVE for credit/deposit, NEGATIVE for debit/withdrawal)
-- "type": string, either "credit" or "debit"
-- "balance": number or null (running balance after transaction)
-
-Rules:
-- Skip opening balance and closing balance rows
-- Skip rows with no amount
-- For Indian number format like "1,45,004.64" convert to 145004.64
-- Debit/withdrawal = negative amount, Credit/deposit = positive amount
-- "-" in debit or credit column means zero/empty for that column
-
-Bank statement text:
-{text}"""
-
-    all_transactions = []
-    skipped = 0
-
-    # ── Step 4: Process each chunk with LLM ──
-    for chunk_num, chunk_text in enumerate(chunks, 1):
-        logger.info(f"Processing chunk {chunk_num}/{len(chunks)} ({len(chunk_text)} chars)")
-        
-        try:
-            # Call GPT-4o API
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt_template.format(text=chunk_text)}],
-                temperature=0,  # Deterministic output
-                max_tokens=4000
-            )
-
-            raw_response = response.choices[0].message.content.strip()
-            
-            # Clean markdown code blocks if present
-            raw_response = re.sub(r'^```(?:json)?\s*', '', raw_response)
-            raw_response = re.sub(r'\s*```$', '', raw_response)
-
-            # ── Parse JSON response ──
-            try:
-                parsed = json.loads(raw_response)
-            except json.JSONDecodeError as e:
-                # GPT response might be truncated — try salvaging valid transactions
-                logger.warning(f"Chunk {chunk_num}: JSON decode error, attempting salvage")
-                last_complete = raw_response.rfind('},')
-                if last_complete == -1:
-                    last_complete = raw_response.rfind('}')
-                if last_complete > 0:
-                    salvaged = raw_response[:last_complete + 1] + ']'
-                    salvaged = re.sub(r',\s*\]', ']', salvaged)
-                    if not salvaged.strip().startswith('['):
-                        salvaged = '[' + salvaged
-                    parsed = json.loads(salvaged)
-                    logger.info(f"Chunk {chunk_num}: salvaged {len(parsed)} transactions from truncated response")
-                else:
-                    logger.warning(f"Chunk {chunk_num}: could not salvage, skipping")
-                    continue
-
-            if not isinstance(parsed, list):
-                logger.warning(f"Chunk {chunk_num}: response is not a list, skipping")
-                continue
-
-            logger.debug(f"Chunk {chunk_num}: LLM returned {len(parsed)} transactions")
-
-            # ── Step 5: Normalize each transaction ──
-            for item in parsed:
-                try:
-                    # Parse date
-                    date_str = str(item.get('date', '')).strip()
-                    parsed_date = parse_date(date_str)
-                    if not parsed_date:
-                        logger.debug(f"Row skipped: unparseable date '{date_str}'")
-                        skipped += 1
-                        continue
-
-                    # Get description
-                    description = str(item.get('description', 'Unknown')).strip()
-                    if not description or description.lower() == 'nan':
-                        description = 'Unknown'
-
-                    # Parse amount
-                    raw_amount = item.get('amount')
-                    if raw_amount is None:
-                        logger.debug(f"Row skipped: missing amount")
-                        skipped += 1
-                        continue
-
-                    amount = float(str(raw_amount).replace(',', ''))
-                    if amount == 0:
-                        logger.debug(f"Row skipped: zero amount")
-                        skipped += 1
-                        continue
-
-                    # Get transaction type (debit/credit)
-                    txn_type = item.get('type', '')
-                    if txn_type not in ('credit', 'debit'):
-                        # Infer from sign of amount
-                        txn_type = 'credit' if amount > 0 else 'debit'
-                        logger.debug(f"Transaction type inferred from amount sign: {txn_type}")
-
-                    # Parse balance (optional)
-                    raw_balance = item.get('balance')
-                    balance = None
-                    if raw_balance is not None:
-                        try:
-                            balance = float(str(raw_balance).replace(',', ''))
-                        except (ValueError, TypeError):
-                            pass
-
-                    # Create normalized transaction record
-                    transaction = {
-                        "transaction_id": str(uuid.uuid4()),
-                        "date": parsed_date,
-                        "description": description,
-                        "amount": round(amount, 2),
-                        "type": txn_type,
-                        "balance": balance
-                    }
-                    all_transactions.append(transaction)
-                    logger.debug(f"Transaction added: {parsed_date} {description} {amount}")
-
-                except Exception as e:
-                    logger.debug(f"Row skipped due to error: {type(e).__name__}: {e}")
-                    skipped += 1
-                    continue
-
-        except HTTPException:
-            # Re-raise HTTP exceptions
-            raise
-        except Exception as e:
-            logger.error(f"Chunk {chunk_num} LLM call failed: {type(e).__name__}: {e}")
-            # Continue with next chunk instead of failing entire parse
-            continue
-
-    logger.info(f"LLM extraction complete: {len(all_transactions)} transactions, {skipped} skipped")
-
-    # ── Validation: Ensure minimum transactions were extracted ──
-    if len(all_transactions) < 5:
-        logger.warning(f"Too few transactions extracted ({len(all_transactions)} < 5)")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "error": "parse_failed",
-                "message": f"Only {len(all_transactions)} valid transactions found. Ensure this is a valid bank statement."
-            }
-        )
-
-    return all_transactions, skipped
+    # ── REAL IMPLEMENTATION (disabled during testing) ──────────────────────────
+    # logger.info("Initializing PDF text extraction")
+    #
+    # # ── Step 1: Extract text from each page ──
+    # pages_text = []
+    # try:
+    #     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+    #         logger.debug(f"PDF opened: {len(pdf.pages)} pages")
+    #         for page_num, page in enumerate(pdf.pages, 1):
+    #             text = page.extract_text()
+    #             if text and text.strip():
+    #                 pages_text.append(text)
+    #                 logger.debug(f"Extracted page {page_num}: {len(text)} chars")
+    # except Exception as e:
+    #     logger.error(f"Failed to extract PDF text: {e}")
+    #     raise HTTPException(
+    #         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+    #         detail={"error": "parse_failed", "message": ERROR_PARSE_FAILED}
+    #     )
+    #
+    # if not pages_text:
+    #     logger.warning("No extractable text found in PDF")
+    #     raise HTTPException(
+    #         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+    #         detail={"error": "parse_failed", "message": "Could not extract text from PDF."}
+    #     )
+    #
+    # # ── Step 2: Group pages into chunks for processing ──
+    # chunks = []
+    # for i in range(0, len(pages_text), PAGES_PER_CHUNK):
+    #     chunk = '\n'.join(pages_text[i:i + PAGES_PER_CHUNK])
+    #     chunks.append(chunk)
+    #
+    # logger.info(f"Created {len(chunks)} chunks from {len(pages_text)} pages")
+    #
+    # # ── Step 3: LLM extraction prompt ──
+    # prompt_template = """You are a bank statement parser. Extract ALL transactions from the text below.
+    #
+    # Return ONLY a valid JSON array. No explanation, no markdown, no code blocks.
+    # Each object must have exactly these fields:
+    # - "date": string in YYYY-MM-DD format
+    # - "description": string (the narration/description of the transaction)
+    # - "amount": number (POSITIVE for credit/deposit, NEGATIVE for debit/withdrawal)
+    # - "type": string, either "credit" or "debit"
+    # - "balance": number or null (running balance after transaction)
+    #
+    # Rules:
+    # - Skip opening balance and closing balance rows
+    # - Skip rows with no amount
+    # - For Indian number format like "1,45,004.64" convert to 145004.64
+    # - Debit/withdrawal = negative amount, Credit/deposit = positive amount
+    # - "-" in debit or credit column means zero/empty for that column
+    #
+    # Bank statement text:
+    # {text}"""
+    #
+    # all_transactions = []
+    # skipped = 0
+    #
+    # # ── Step 4: Process each chunk with LLM ──
+    # for chunk_num, chunk_text in enumerate(chunks, 1):
+    #     logger.info(f"Processing chunk {chunk_num}/{len(chunks)} ({len(chunk_text)} chars)")
+    #
+    #     try:
+    #         # Call GPT-4o API
+    #         response = client.chat.completions.create(
+    #             model="gpt-4o",
+    #             messages=[{"role": "user", "content": prompt_template.format(text=chunk_text)}],
+    #             temperature=0,
+    #             max_tokens=4000
+    #         )
+    #
+    #         raw_response = response.choices[0].message.content.strip()
+    #
+    #         # Clean markdown code blocks if present
+    #         raw_response = re.sub(r'^```(?:json)?\s*', '', raw_response)
+    #         raw_response = re.sub(r'\s*```$', '', raw_response)
+    #
+    #         # ── Parse JSON response ──
+    #         try:
+    #             parsed = json.loads(raw_response)
+    #         except json.JSONDecodeError as e:
+    #             logger.warning(f"Chunk {chunk_num}: JSON decode error, attempting salvage")
+    #             last_complete = raw_response.rfind('},')
+    #             if last_complete == -1:
+    #                 last_complete = raw_response.rfind('}')
+    #             if last_complete > 0:
+    #                 salvaged = raw_response[:last_complete + 1] + ']'
+    #                 salvaged = re.sub(r',\s*\]', ']', salvaged)
+    #                 if not salvaged.strip().startswith('['):
+    #                     salvaged = '[' + salvaged
+    #                 parsed = json.loads(salvaged)
+    #                 logger.info(f"Chunk {chunk_num}: salvaged {len(parsed)} transactions from truncated response")
+    #             else:
+    #                 logger.warning(f"Chunk {chunk_num}: could not salvage, skipping")
+    #                 continue
+    #
+    #         if not isinstance(parsed, list):
+    #             logger.warning(f"Chunk {chunk_num}: response is not a list, skipping")
+    #             continue
+    #
+    #         logger.debug(f"Chunk {chunk_num}: LLM returned {len(parsed)} transactions")
+    #
+    #         # ── Step 5: Normalize each transaction ──
+    #         for item in parsed:
+    #             try:
+    #                 date_str = str(item.get('date', '')).strip()
+    #                 parsed_date = parse_date(date_str)
+    #                 if not parsed_date:
+    #                     logger.debug(f"Row skipped: unparseable date '{date_str}'")
+    #                     skipped += 1
+    #                     continue
+    #
+    #                 description = str(item.get('description', 'Unknown')).strip()
+    #                 if not description or description.lower() == 'nan':
+    #                     description = 'Unknown'
+    #
+    #                 raw_amount = item.get('amount')
+    #                 if raw_amount is None:
+    #                     logger.debug(f"Row skipped: missing amount")
+    #                     skipped += 1
+    #                     continue
+    #
+    #                 amount = float(str(raw_amount).replace(',', ''))
+    #                 if amount == 0:
+    #                     logger.debug(f"Row skipped: zero amount")
+    #                     skipped += 1
+    #                     continue
+    #
+    #                 txn_type = item.get('type', '')
+    #                 if txn_type not in ('credit', 'debit'):
+    #                     txn_type = 'credit' if amount > 0 else 'debit'
+    #                     logger.debug(f"Transaction type inferred from amount sign: {txn_type}")
+    #
+    #                 raw_balance = item.get('balance')
+    #                 balance = None
+    #                 if raw_balance is not None:
+    #                     try:
+    #                         balance = float(str(raw_balance).replace(',', ''))
+    #                     except (ValueError, TypeError):
+    #                         pass
+    #
+    #                 transaction = {
+    #                     "transaction_id": str(uuid.uuid4()),
+    #                     "date": parsed_date,
+    #                     "description": description,
+    #                     "amount": round(amount, 2),
+    #                     "type": txn_type,
+    #                     "balance": balance
+    #                 }
+    #                 all_transactions.append(transaction)
+    #                 logger.debug(f"Transaction added: {parsed_date} {description} {amount}")
+    #
+    #             except Exception as e:
+    #                 logger.debug(f"Row skipped due to error: {type(e).__name__}: {e}")
+    #                 skipped += 1
+    #                 continue
+    #
+    #     except HTTPException:
+    #         raise
+    #     except Exception as e:
+    #         logger.error(f"Chunk {chunk_num} LLM call failed: {type(e).__name__}: {e}")
+    #         continue
+    #
+    # logger.info(f"LLM extraction complete: {len(all_transactions)} transactions, {skipped} skipped")
+    #
+    # if len(all_transactions) < 5:
+    #     logger.warning(f"Too few transactions extracted ({len(all_transactions)} < 5)")
+    #     raise HTTPException(
+    #         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+    #         detail={
+    #             "error": "parse_failed",
+    #             "message": f"Only {len(all_transactions)} valid transactions found. Ensure this is a valid bank statement."
+    #         }
+    #     )
+    #
+    # return all_transactions, skipped
 
 # ─────────────────────────────────────────────
 # MAIN ENTRY POINT

@@ -32,10 +32,11 @@ import { VALIDATION_RULES } from '../constants/config'
 import Input from '../shared/Input'
 import Button from '../shared/Button'
 
-const EMAIL_REGEX = VALIDATION_RULES.emailRegex
+const EMAIL_REGEX = VALIDATION_RULES.EMAIL.PATTERN
 
-// Password validation from constants
-const PASSWORD_REGEX = VALIDATION_RULES.passwordRegex
+// Password validation: min 8 chars, at least 1 uppercase, at least 1 number
+const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d).{8,}$/
+const PASSWORD_MIN_LENGTH = VALIDATION_RULES.PASSWORD.MIN_LENGTH
 
 const SignupPage = () => {
   const [email, setEmail] = useState<string>('')
@@ -72,7 +73,7 @@ const SignupPage = () => {
       return false
     }
     if (!PASSWORD_REGEX.test(value)) {
-      setPasswordError('Min 7 characters, one uppercase letter and one number required')
+      setPasswordError(`Min ${PASSWORD_MIN_LENGTH} characters, one uppercase letter and one number required`)
       return false
     }
     setPasswordError('')

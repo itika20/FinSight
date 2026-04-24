@@ -21,6 +21,7 @@ export interface Transaction {
   type: 'credit' | 'debit'
   balance: number | null
   category?: string | null
+  confidence?: string | null  // 'high' | 'medium' | 'low' | 'uncategorised' | 'user_confirmed'
   anomaly_score?: number | null
   is_anomaly?: boolean | null
 }
@@ -38,5 +39,6 @@ export interface TransactionContextType {
   error: string | null
   loadTransactions: () => Promise<void>
   addTransactions: (newTransactions: Transaction[]) => void
+  updateTransactionCategory: (transactionId: string, category: string) => Promise<void>
   clearError: () => void
 }
