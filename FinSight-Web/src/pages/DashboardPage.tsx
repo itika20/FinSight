@@ -101,8 +101,8 @@ const DashboardPage = () => {
                 Upload your transactions to identify patterns
               </h2>
               <p className="text-sm text-gray-400 mt-2 max-w-sm">
-                Upload your bank statement and we'll analyse your spending,
-                detect anomalies, and help you understand your finances.
+                Upload your bank statement and we'll analyse your spending
+                and help you understand your finances.
               </p>
             </div>
             <button
@@ -171,7 +171,6 @@ const DashboardPage = () => {
                   value: '₹' + totalSpend.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 },
                 { label: 'Top Category', value: topCategory ?? '—' },
-                { label: 'Anomalies',    value: '—' },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-white rounded-xl border border-gray-100 p-5">
                   <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">

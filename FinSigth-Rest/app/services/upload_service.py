@@ -237,9 +237,7 @@ def get_transactions(
             type,
             balance,
             category,
-            confidence,
-            anomaly_score,
-            is_anomaly
+            confidence
         FROM transactions
         WHERE user_id = %s
     """

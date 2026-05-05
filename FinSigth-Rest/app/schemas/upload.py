@@ -12,9 +12,7 @@ class ParsedTransaction(BaseModel):
     type: str
     balance: Optional[float] = None
     category: Optional[str] = None
-    anomaly_score: Optional[float] = None
-    is_anomaly: Optional[bool] = None
-    confidence: Optional[str] = None 
+    confidence: Optional[str] = None
 
 # What the upload endpoint returns
 class UploadResponse(BaseModel):
