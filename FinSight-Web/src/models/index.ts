@@ -22,8 +22,6 @@ export interface Transaction {
   balance: number | null
   category?: string | null
   confidence?: string | null  // 'high' | 'medium' | 'low' | 'uncategorised' | 'user_confirmed'
-  anomaly_score?: number | null
-  is_anomaly?: boolean | null
 }
 
 export interface DateRange {
