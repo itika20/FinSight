@@ -37,7 +37,7 @@ import TransactionTable from '../components/transactions/TransactionTable'
 
 const DashboardPage = () => {
   const { user, logout } = useAuth()
-  const { totalCount, isLoading, error, loadTransactions, clearError, addTransactions } = useTransactions()
+  const { totalCount, totalSpend, topCategory, isLoading, error, loadTransactions, clearError, addTransactions } = useTransactions()
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
 
@@ -161,13 +161,24 @@ const DashboardPage = () => {
         {hasData && !isLoading && (
           <div className="flex flex-col gap-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {['Total Transactions', 'Total Spend', 'Top Category', 'Anomalies'].map((label) => (
+              {[
+                {
+                  label: 'Total Transactions',
+                  value: totalCount.toLocaleString('en-IN'),
+                },
+                {
+                  label: 'Total Spend',
+                  value: '₹' + totalSpend.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                },
+                { label: 'Top Category', value: topCategory ?? '—' },
+                { label: 'Anomalies',    value: '—' },
+              ].map(({ label, value }) => (
                 <div key={label} className="bg-white rounded-xl border border-gray-100 p-5">
                   <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">
                     {label}
                   </p>
                   <p className="text-2xl font-bold text-gray-800 mt-2">
-                    {label === 'Total Transactions' ? totalCount : '—'}
+                    {value}
                   </p>
                 </div>
               ))}

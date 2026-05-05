@@ -34,6 +34,8 @@ export interface DateRange {
 export interface TransactionContextType {
   transactions: Transaction[]
   totalCount: number
+  totalSpend: number
+  topCategory: string | null
   dateRange: DateRange
   isLoading: boolean
   error: string | null

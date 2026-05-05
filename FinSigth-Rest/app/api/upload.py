@@ -38,7 +38,7 @@ from app.services.upload_service import (
     update_transaction_category,       
     bulk_update_categories       
 )
-from app.ml.categorise import (   
+from app.services.categorise import (
     categorise_transaction,
     extract_vpa,
     save_vpa_memory

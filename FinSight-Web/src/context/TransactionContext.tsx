@@ -18,7 +18,7 @@
  * - No periodic polling
  */
 
-import { createContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useState, useCallback, useMemo, type ReactNode } from 'react'
 import type { Transaction, DateRange, TransactionContextType } from '../models'
 import { getTransactionsApi, updateCategoryApi } from '../api/upload'
 
@@ -249,6 +249,38 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
   }, [])
 
   // ============================================================================
+  // DERIVED VALUES
+  // ============================================================================
+
+  /** Sum of all debit transaction amounts — recomputed only when transactions change */
+  const totalSpend = useMemo(
+    () => transactions
+      .filter(t => t.type === 'debit')
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0),
+    [transactions]
+  )
+
+  /**
+   * Category with the highest total debit spend.
+   * Groups all debit transactions by category, sums each group, returns the top one.
+   * Null if there are no categorised debit transactions.
+   */
+  const topCategory = useMemo(() => {
+    const spendByCategory: Record<string, number> = {}
+
+    for (const t of transactions) {
+      if (t.type !== 'debit') continue
+      const cat = t.category || 'Uncategorised'
+      spendByCategory[cat] = (spendByCategory[cat] ?? 0) + Math.abs(t.amount)
+    }
+
+    const entries = Object.entries(spendByCategory)
+    if (entries.length === 0) return null
+
+    return entries.reduce((best, curr) => curr[1] > best[1] ? curr : best)[0]
+  }, [transactions])
+
+  // ============================================================================
   // CONTEXT VALUE
   // ============================================================================
 
@@ -260,6 +292,8 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
   const value: TransactionContextType = {
     transactions,
     totalCount,
+    totalSpend,
+    topCategory,
     dateRange,
     isLoading,
     error,
