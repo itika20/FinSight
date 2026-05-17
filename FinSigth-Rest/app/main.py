@@ -10,8 +10,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
+from app.api.goals import router as goals_router
 from app.api.upload import router as upload_router
-from app.core.constants import LOGGER_GENERAL, LOGGER_AUTH, LOGGER_UPLOAD, LOGGER_PARSING, LOGGER_DATABASE
+from app.core import model_loader
+from app.core.constants import LOGGER_GENERAL, LOGGER_AUTH, LOGGER_UPLOAD, LOGGER_PARSING, LOGGER_DATABASE, LOGGER_GOALS
 
 # ─────────────────────────────────────────────
 # CONFIGURE LOGGING
@@ -43,7 +45,7 @@ def configure_logging():
     root_logger.addHandler(console_handler)
     
     # Set child loggers to DEBUG level (they inherit handlers from root)
-    for logger_name in [LOGGER_GENERAL, LOGGER_AUTH, LOGGER_UPLOAD, LOGGER_PARSING, LOGGER_DATABASE]:
+    for logger_name in [LOGGER_GENERAL, LOGGER_AUTH, LOGGER_UPLOAD, LOGGER_PARSING, LOGGER_DATABASE, LOGGER_GOALS]:
         logger = logging.getLogger(logger_name)
         logger.setLevel(logging.DEBUG)
     
@@ -89,6 +91,7 @@ app.add_middleware(
 logger.info("Registering API routers")
 app.include_router(auth_router)
 app.include_router(upload_router)
+app.include_router(goals_router)
 
 @app.get("/health", tags=["System"])
 def health():
@@ -107,8 +110,9 @@ def health():
 
 @app.on_event("startup")
 async def startup():
-    """Initialize logging and startup tasks."""
+    """Load model artifacts and complete startup tasks."""
     logger.info("FinSight API starting up")
+    model_loader.load_models(app)
 
 @app.on_event("shutdown")
 async def shutdown():

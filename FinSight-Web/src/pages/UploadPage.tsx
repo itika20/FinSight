@@ -130,9 +130,6 @@ const UploadPage = () => {
     setTransactionCount(0)
   }
 
-  const isDropZoneDisabled =
-    uploadState === 'uploading' || uploadState === 'parsing'
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-xl">

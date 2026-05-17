@@ -15,6 +15,40 @@ export const API_CONFIG = {
 } as const
 
 // ─────────────────────────────────────────────
+// GOALS CONSTANTS
+// ─────────────────────────────────────────────
+
+export const GOALS_ENDPOINT = '/goals'
+
+export const GOAL_PRESETS = [
+  { label: 'Emergency Fund', amount: 150000, months: 6 },
+  { label: 'Europe Trip',    amount: 200000, months: 12 },
+  { label: 'New Laptop',     amount: 80000,  months: 4 },
+  { label: 'Down Payment',   amount: 500000, months: 24 },
+] as const
+
+// Status badge display labels (on_track / at_risk / off_track → display string)
+export const GOAL_STATUS_LABELS: Record<string, string> = {
+  on_track:  'On track',
+  at_risk:   'Behind',
+  off_track: 'Behind',
+}
+
+// Status badge Tailwind classes
+export const GOAL_STATUS_BADGE: Record<string, string> = {
+  on_track:  'bg-green-100 text-green-800 border border-green-200',
+  at_risk:   'bg-amber-100 text-amber-800 border border-amber-200',
+  off_track: 'bg-red-100   text-red-800   border border-red-200',
+}
+
+// CreateGoalModal configuration
+export const GOAL_MODAL = {
+  VISIBLE_CARDS: 5,   // recommendation cards shown before "Show more"
+  MAX_MONTHS:    60,  // slider max (5 years)
+  MIN_MONTHS:    1,
+} as const
+
+// ─────────────────────────────────────────────
 // AUTHENTICATION CONSTANTS
 // ─────────────────────────────────────────────
 

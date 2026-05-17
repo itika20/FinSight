@@ -5,6 +5,8 @@ import ProtectedRoute from './components/auth/ProtectedRoute'
 import LoginPage from './pages/LoginPage.tsx'
 import SignupPage from './pages/SignupPage.tsx'
 import Dashboard from './pages/DashboardPage.tsx'
+import GoalsHubPage from './pages/GoalsHubPage.tsx'
+import GoalDetailPage from './pages/GoalDetailPage.tsx'
 import PublicRoute from './components/auth/PublicRoute.tsx'
 
 function App() {
@@ -30,6 +32,16 @@ function App() {
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/goals" element={
+            <ProtectedRoute>
+              <GoalsHubPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/goals/:id" element={
+            <ProtectedRoute>
+              <GoalDetailPage />
             </ProtectedRoute>
           } />
 

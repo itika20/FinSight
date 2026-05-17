@@ -208,29 +208,46 @@ def _parse_pdf_llm(file_bytes: bytes) -> tuple[list[dict], int]:
     # TO RESTORE: delete this block (everything up to END MOCK MODE) and
     #             uncomment the real implementation below it.
     logger.warning("[MOCK MODE] Skipping GPT-4o API call — returning mock transactions")
+    # Transactions spread across 3 months so the goals feature has sufficient history.
+    # Each month has a salary credit >= Rs5,000 (required for income estimation).
     mock_transactions = [
+        # ── March 2026 ──
         {"transaction_id": str(uuid.uuid4()), "date": "2026-03-01", "description": "ZOMATO ORDER#98234",             "amount": -450.00,   "type": "debit",  "balance": 52340.50},
-        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-02", "description": "UPI/REF/120304/UPI/9898626148@ptaxis", "amount": -5000.00,  "type": "debit",  "balance": 47340.50},
         {"transaction_id": str(uuid.uuid4()), "date": "2026-03-03", "description": "AMAZON.IN ORDER#405-1234567",    "amount": -1299.00,  "type": "debit",  "balance": 46041.50},
         {"transaction_id": str(uuid.uuid4()), "date": "2026-03-04", "description": "SALARY CREDIT ACME CORP",        "amount": 85000.00,  "type": "credit", "balance": 131041.50},
         {"transaction_id": str(uuid.uuid4()), "date": "2026-03-05", "description": "SWIGGY ORDER#SW998123",          "amount": -320.00,   "type": "debit",  "balance": 130721.50},
-        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-06", "description": "IRCTC TRAIN BOOKING PNR#123456", "amount": -1450.00,  "type": "debit",  "balance": 129271.50},
-        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-07", "description": "UPI/REF/bharatpe789012",         "amount": -180.00,   "type": "debit",  "balance": 129091.50},
         {"transaction_id": str(uuid.uuid4()), "date": "2026-03-08", "description": "BIGBASKET ORDER#BB44512",        "amount": -2340.00,  "type": "debit",  "balance": 126751.50},
         {"transaction_id": str(uuid.uuid4()), "date": "2026-03-10", "description": "AIRTEL POSTPAID BILL",           "amount": -999.00,   "type": "debit",  "balance": 125752.50},
-        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-11", "description": "NEFT/HDFC0001234/RENT PAYMENT",  "amount": -25000.00, "type": "debit",  "balance": 100752.50},
         {"transaction_id": str(uuid.uuid4()), "date": "2026-03-12", "description": "ZERODHA MUTUAL FUND SIP",        "amount": -10000.00, "type": "debit",  "balance": 90752.50},
-        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-13", "description": "UBER TRIP BANGALORE",            "amount": -256.00,   "type": "debit",  "balance": 90496.50},
-        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-14", "description": "STARBUCKS KORAMANGALA",          "amount": -520.00,   "type": "debit",  "balance": 89976.50},
         {"transaction_id": str(uuid.uuid4()), "date": "2026-03-15", "description": "FREELANCE PAYMENT RECEIVED",     "amount": 15000.00,  "type": "credit", "balance": 104976.50},
-        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-17", "description": "APOLLO PHARMACY",                "amount": -890.00,   "type": "debit",  "balance": 104086.50},
         {"transaction_id": str(uuid.uuid4()), "date": "2026-03-18", "description": "FLIPKART ORDER#FK-9912345",      "amount": -3499.00,  "type": "debit",  "balance": 100587.50},
         {"transaction_id": str(uuid.uuid4()), "date": "2026-03-19", "description": "HPCL FUEL STATION WHITEFIELD",   "amount": -3200.00,  "type": "debit",  "balance": 97387.50},
-        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-20", "description": "LIC PREMIUM AUTO DEBIT",         "amount": -4500.00,  "type": "debit",  "balance": 92887.50},
-        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-21", "description": "UDEMY COURSE PURCHASE",          "amount": -455.00,   "type": "debit",  "balance": 92432.50},
-        {"transaction_id": str(uuid.uuid4()), "date": "2026-03-22", "description": "BAJAJ FINSERV EMI",              "amount": -6200.00,  "type": "debit",  "balance": 86232.50},
+
+        # ── April 2026 ──
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-04-01", "description": "ZOMATO ORDER#99101",             "amount": -620.00,   "type": "debit",  "balance": 96767.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-04-03", "description": "BOOKMYSHOW MOVIE TICKETS",       "amount": -780.00,   "type": "debit",  "balance": 95987.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-04-04", "description": "SALARY CREDIT ACME CORP",        "amount": 85000.00,  "type": "credit", "balance": 180987.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-04-06", "description": "IRCTC TRAIN BOOKING PNR#654321", "amount": -1850.00,  "type": "debit",  "balance": 179137.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-04-09", "description": "BIGBASKET ORDER#BB55621",        "amount": -2890.00,  "type": "debit",  "balance": 176247.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-04-11", "description": "NETFLIX SUBSCRIPTION",           "amount": -649.00,   "type": "debit",  "balance": 175598.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-04-14", "description": "UBER TRIP BANGALORE",            "amount": -310.00,   "type": "debit",  "balance": 175288.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-04-17", "description": "APOLLO PHARMACY",                "amount": -1200.00,  "type": "debit",  "balance": 174088.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-04-20", "description": "AMAZON.IN ORDER#406-7654321",    "amount": -4299.00,  "type": "debit",  "balance": 169789.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-04-25", "description": "ZERODHA MUTUAL FUND SIP",        "amount": -10000.00, "type": "debit",  "balance": 159789.50},
+
+        # ── May 2026 ──
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-05-02", "description": "SWIGGY ORDER#SW112233",          "amount": -510.00,   "type": "debit",  "balance": 159279.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-05-04", "description": "SALARY CREDIT ACME CORP",        "amount": 85000.00,  "type": "credit", "balance": 244279.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-05-06", "description": "HPCL FUEL STATION WHITEFIELD",   "amount": -3500.00,  "type": "debit",  "balance": 240779.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-05-08", "description": "NEFT/HDFC0001234/RENT PAYMENT",  "amount": -25000.00, "type": "debit",  "balance": 215779.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-05-10", "description": "AIRTEL POSTPAID BILL",           "amount": -999.00,   "type": "debit",  "balance": 214780.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-05-12", "description": "STARBUCKS KORAMANGALA",          "amount": -640.00,   "type": "debit",  "balance": 214140.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-05-14", "description": "BIGBASKET ORDER#BB66789",        "amount": -2100.00,  "type": "debit",  "balance": 212040.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-05-16", "description": "BOOKMYSHOW COMEDY SHOW",         "amount": -1200.00,  "type": "debit",  "balance": 210840.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-05-18", "description": "FLIPKART ORDER#FK-1123456",      "amount": -2799.00,  "type": "debit",  "balance": 208041.50},
+        {"transaction_id": str(uuid.uuid4()), "date": "2026-05-20", "description": "LIC PREMIUM AUTO DEBIT",         "amount": -4500.00,  "type": "debit",  "balance": 203541.50},
     ]
-    logger.info(f"[MOCK MODE] Returning {len(mock_transactions)} mock transactions")
+    logger.info(f"[MOCK MODE] Returning {len(mock_transactions)} mock transactions across 3 months")
     return mock_transactions, 0
     # ── END MOCK MODE ──────────────────────────────────────────────────────────
 

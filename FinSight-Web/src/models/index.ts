@@ -34,6 +34,7 @@ export interface TransactionContextType {
   totalCount: number
   totalSpend: number
   topCategory: string | null
+  avgMonthlySavings: number   // monthly average of Investments-category debits across all months
   dateRange: DateRange
   isLoading: boolean
   error: string | null

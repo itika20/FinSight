@@ -261,6 +261,22 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
   )
 
   /**
+   * Monthly average of Investments-category debit transactions.
+   * Groups all qualifying transactions by calendar month, sums each month,
+   * then returns the mean across months. Returns 0 when no data exists.
+   */
+  const avgMonthlySavings = useMemo(() => {
+    const monthlyTotals: Record<string, number> = {}
+    for (const t of transactions) {
+      if (t.type !== 'debit' || t.category !== 'Investments') continue
+      const month = t.date.slice(0, 7)   // 'YYYY-MM'
+      monthlyTotals[month] = (monthlyTotals[month] ?? 0) + Math.abs(t.amount)
+    }
+    const months = Object.values(monthlyTotals)
+    return months.length === 0 ? 0 : months.reduce((s, v) => s + v, 0) / months.length
+  }, [transactions])
+
+  /**
    * Category with the highest total debit spend.
    * Groups all debit transactions by category, sums each group, returns the top one.
    * Null if there are no categorised debit transactions.
@@ -294,6 +310,7 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
     totalCount,
     totalSpend,
     topCategory,
+    avgMonthlySavings,
     dateRange,
     isLoading,
     error,

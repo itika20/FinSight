@@ -92,6 +92,65 @@ ERROR_TRANSACTION_NOT_FOUND = "Transaction not found."
 ERROR_INVALID_CATEGORY = "Invalid category. Must be one of: {valid_categories}"
 
 # ─────────────────────────────────────────────
+# GOAL SERVICE CONSTANTS
+# ─────────────────────────────────────────────
+
+# Minimum months of transaction history to compute a reliable profile
+GOAL_MIN_MONTHS_DATA = 2
+
+# Minimum percentage-point gap to flag a category as overspending
+GOAL_OVERSPEND_THRESHOLD = 0.02
+
+# Minimum single credit transaction to count toward income estimate
+INCOME_MIN_CREDIT_AMOUNT = 5000.0
+
+# DB category name → model feature name (categories not listed here
+# are tracked in spending but not individually modelled)
+CATEGORY_FEATURE_MAP = {
+    'Food':          'food',
+    'Groceries':     'groceries',
+    'Transport':     'transport',
+    'Shopping':      'shopping',
+    'Entertainment': 'entertainment',
+    'Utilities':     'utilities',
+    'Healthcare':    'healthcare',
+    'Investments':   'investments',
+    'Fuel':          'fuel',
+}
+
+# Categories that must never appear as cutback recommendations.
+#   Investments  — they ARE savings; recommending cuts contradicts the goal
+#   EMI & Loans  — fixed legal obligations; user cannot reduce them
+#   Healthcare   — non-discretionary; cutting is harmful
+NON_CUTTABLE_CATEGORIES: frozenset = frozenset({"Investments", "EMI & Loans", "Healthcare"})
+
+# Minimum percentage-point gap below peer benchmark before surfacing the
+# "you under-invest compared to peers" insight (avoids noise for tiny gaps)
+INVESTMENT_INSIGHT_THRESHOLD: float = 0.02
+
+# Order in which to allocate cuts (less painful / most discretionary first)
+GOAL_CUT_PRIORITY = [
+    'entertainment',
+    'shopping',
+    'food',
+    'transport',
+    'fuel',
+    'groceries',
+    'utilities',
+    'healthcare',
+    'investments',   # last — cutting investments harms long-term wealth
+]
+
+# Error messages
+ERROR_INSUFFICIENT_HISTORY = (
+    "Need at least {min_months} months of transaction data to compute your spending profile."
+)
+ERROR_INCOME_UNKNOWN = (
+    "Cannot estimate income: no credit transactions above Rs{threshold:,.0f}."
+)
+ERROR_GOAL_ALREADY_MET = "You are already saving enough to reach this goal — no cutbacks needed."
+
+# ─────────────────────────────────────────────
 # LOGGING CONSTANTS
 # ─────────────────────────────────────────────
 
@@ -101,6 +160,7 @@ LOGGER_UPLOAD = 'upload'
 LOGGER_PARSING = 'parsing'
 LOGGER_DATABASE = 'database'
 LOGGER_GENERAL = 'finsight'
+LOGGER_GOALS = 'goals'
 
 # Log message templates
 LOG_USER_SIGNUP = "User signup: {email}"

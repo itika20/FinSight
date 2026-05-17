@@ -60,7 +60,7 @@ const validateFile = (file: File): string | null => {
   // Check MIME type or extension
   // Some browsers don't set MIME type correctly, so check both
   const isValidType =
-    UPLOAD_CONFIG.ACCEPTED_FILE_TYPES.includes(file.type) || file.name.endsWith('.pdf')
+    (UPLOAD_CONFIG.ACCEPTED_FILE_TYPES as readonly string[]).includes(file.type) || file.name.endsWith('.pdf')
 
   if (!isValidType) {
     return ERROR_MESSAGES.INVALID_FILE_FORMAT || 'Only PDF files are supported'

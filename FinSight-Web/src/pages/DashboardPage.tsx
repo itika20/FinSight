@@ -30,14 +30,16 @@
  */
 
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTransactions } from '../hooks/useTransactions'
 import UploadModal from '../components/upload/UploadModal'
 import TransactionTable from '../components/transactions/TransactionTable'
 
 const DashboardPage = () => {
+  const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const { totalCount, totalSpend, topCategory, isLoading, error, loadTransactions, clearError, addTransactions } = useTransactions()
+  const { totalCount, totalSpend, topCategory, avgMonthlySavings, isLoading, error, loadTransactions, clearError, addTransactions } = useTransactions()
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
 
@@ -62,12 +64,18 @@ const DashboardPage = () => {
 
       {/* Top bar */}
       <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
-        <div>
+        <button onClick={() => navigate('/dashboard')} className="text-left hover:opacity-75 transition-opacity">
           <h1 className="text-xl font-bold text-gray-900">FinSight</h1>
           <p className="text-xs text-gray-400">Personal Finance Analyser</p>
-        </div>
+        </button>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-500">{user?.email}</span>
+          <button
+            onClick={() => navigate('/goals')}
+            className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
+          >
+            Set a Goal
+          </button>
           <button
             onClick={() => setIsUploadModalOpen(true)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
@@ -171,7 +179,14 @@ const DashboardPage = () => {
                   value: '₹' + totalSpend.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 },
                 { label: 'Top Category', value: topCategory ?? '—' },
-              ].map(({ label, value }) => (
+                {
+                  label: 'Current Savings',
+                  value: avgMonthlySavings > 0
+                    ? '₹' + avgMonthlySavings.toLocaleString('en-IN', { maximumFractionDigits: 0 }) + '/mo'
+                    : '—',
+                  sub: avgMonthlySavings > 0 ? 'avg monthly investments' : 'no investment transactions',
+                },
+              ].map(({ label, value, sub }) => (
                 <div key={label} className="bg-white rounded-xl border border-gray-100 p-5">
                   <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">
                     {label}
@@ -179,6 +194,9 @@ const DashboardPage = () => {
                   <p className="text-2xl font-bold text-gray-800 mt-2">
                     {value}
                   </p>
+                  {sub && (
+                    <p className="text-xs text-gray-400 mt-1">{sub}</p>
+                  )}
                 </div>
               ))}
             </div>
