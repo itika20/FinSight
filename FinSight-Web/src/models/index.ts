@@ -29,15 +29,44 @@ export interface DateRange {
   to: string | null        // YYYY-MM-DD
 }
 
+export interface Upload {
+  id: string
+  filename: string
+  file_type: string
+  transaction_count: number
+  status: string
+  created_at: string
+}
+
+export interface UploadListResponse {
+  uploads: Upload[]
+  total_count: number
+}
+
+export interface DeleteUploadResponse {
+  message: string
+  deleted_transaction_count: number
+}
+
 export interface TransactionContextType {
-  transactions: Transaction[]
-  totalCount: number
-  totalSpend: number
-  topCategory: string | null
-  avgMonthlySavings: number   // monthly average of Investments-category debits across all months
+  transactions: Transaction[]           // full unfiltered list
+  filteredTransactions: Transaction[]   // filtered by selectedMonth (or all if null)
+  totalCount: number                    // count of filteredTransactions
+  totalSpend: number                    // filtered by selectedMonth
+  topCategory: string | null            // filtered by selectedMonth
+  avgMonthlySavings: number             // overall average across all months (not filtered)
   dateRange: DateRange
   isLoading: boolean
   error: string | null
+  // Month filter
+  selectedMonth: string | null  // 'YYYY-MM' or null (shows all)
+  availableMonths: string[]     // 'YYYY-MM' strings derived from transactions, newest first
+  setSelectedMonth: (month: string | null) => void
+  // Upload history
+  uploads: Upload[]
+  statementCount: number
+  loadUploads: () => Promise<void>
+  // Core actions
   loadTransactions: () => Promise<void>
   addTransactions: (newTransactions: Transaction[]) => void
   updateTransactionCategory: (transactionId: string, category: string) => Promise<void>

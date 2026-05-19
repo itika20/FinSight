@@ -85,7 +85,10 @@ export const UPLOAD_CONFIG = {
 export const UPLOAD_ENDPOINTS = {
   STATEMENT: '/upload/statement',
   TRANSACTIONS: '/upload/transactions',
-  UPDATE_CATEGORY: '/upload/transactions/{id}/category'
+  UPDATE_CATEGORY: '/upload/transactions/{id}/category',
+  UPLOADS: '/upload/uploads',
+  DELETE_UPLOAD: '/upload/uploads/{id}',
+  NORMALIZE_MERCHANTS: '/upload/normalize-merchants',
 } as const
 
 // Upload progress states

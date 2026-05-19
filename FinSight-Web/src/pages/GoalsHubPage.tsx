@@ -16,6 +16,7 @@ import type { SavedGoal, SavedGoalListResponse } from '../models/goals'
 import MonthlySnapshot from '../components/goals/MonthlySnapshot'
 import CreateGoalModal from '../components/goals/CreateGoalModal'
 import { GOAL_STATUS_LABELS, GOAL_STATUS_BADGE } from '../constants/config'
+import UserMenu from '../components/shared/UserMenu'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 0 })
@@ -135,7 +136,6 @@ const GoalsHubPage = () => {
           <p className="text-xs text-gray-400">Personal Finance Analyser</p>
         </button>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">{user?.email}</span>
           <button
             onClick={() => navigate('/dashboard')}
             className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
@@ -143,11 +143,12 @@ const GoalsHubPage = () => {
             Dashboard
           </button>
           <button
-            onClick={logout}
-            className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+            onClick={() => navigate('/analytics')}
+            className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
           >
-            Logout
+            Analytics
           </button>
+          <UserMenu email={user?.email} onLogout={logout} />
         </div>
       </div>
 

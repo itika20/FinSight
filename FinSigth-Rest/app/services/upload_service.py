@@ -346,6 +346,82 @@ def update_transaction_category(
     return dict(row)
 
 
+def list_uploads(conn, user_id: str) -> list[dict]:
+    """
+    Returns all completed uploads for a user, newest first.
+    Only returns uploads with status='completed' (skips failed/processing).
+    """
+    logger.info(f"Listing uploads for user {user_id}")
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, filename, file_type, created_at, transaction_count, status
+            FROM uploads
+            WHERE user_id = %s AND status = %s
+            ORDER BY created_at DESC
+            """,
+            (user_id, UPLOAD_STATUS_COMPLETED)
+        )
+        rows = cursor.fetchall()
+
+    result = [
+        {
+            'id': str(row['id']),
+            'filename': row['filename'],
+            'file_type': row['file_type'] or 'pdf',
+            'created_at': str(row['created_at']),
+            'transaction_count': row['transaction_count'] or 0,
+            'status': row['status'],
+        }
+        for row in rows
+    ]
+    logger.debug(f"Found {len(result)} completed uploads for user {user_id}")
+    return result
+
+
+def delete_upload(conn, user_id: str, upload_id: str) -> dict | None:
+    """
+    Deletes an upload record and all its transactions.
+    VPA memory (user_vpa_memory) is intentionally left intact.
+
+    Returns dict with deleted_transaction_count, or None if not found.
+    """
+    logger.info(f"Deleting upload {upload_id} for user {user_id}")
+    with conn.cursor() as cursor:
+        # Verify ownership first
+        cursor.execute(
+            "SELECT id FROM uploads WHERE id = %s AND user_id = %s",
+            (upload_id, user_id)
+        )
+        if not cursor.fetchone():
+            logger.warning(f"Upload {upload_id} not found for user {user_id}")
+            return None
+
+        # Count transactions before deleting (for response body)
+        cursor.execute(
+            "SELECT COUNT(*) AS cnt FROM transactions WHERE upload_id = %s AND user_id = %s",
+            (upload_id, user_id)
+        )
+        count_row = cursor.fetchone()
+        deleted_count = int(count_row['cnt']) if count_row else 0
+
+        # Delete transactions belonging to this upload
+        cursor.execute(
+            "DELETE FROM transactions WHERE upload_id = %s AND user_id = %s",
+            (upload_id, user_id)
+        )
+        logger.debug(f"Deleted {deleted_count} transactions for upload {upload_id}")
+
+        # Delete the upload record itself
+        cursor.execute(
+            "DELETE FROM uploads WHERE id = %s AND user_id = %s",
+            (upload_id, user_id)
+        )
+        logger.info(f"Upload {upload_id} deleted successfully ({deleted_count} transactions)")
+
+    return {'deleted_transaction_count': deleted_count}
+
+
 def bulk_update_categories(
     conn,
     updates: list[tuple[str, str, str]]   # (transaction_id, category, confidence)

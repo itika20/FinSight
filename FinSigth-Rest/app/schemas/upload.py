@@ -36,4 +36,26 @@ class CategoryUpdateResponse(BaseModel):
     message: str
     transaction_id: str
     category: str
-    vpa_saved: bool                 
+    vpa_saved: bool
+
+class Upload(BaseModel):
+    id: str
+    filename: str
+    file_type: str
+    transaction_count: int
+    status: str
+    created_at: str
+
+class UploadListResponse(BaseModel):
+    uploads: list[Upload]
+    total_count: int
+
+class DeleteUploadResponse(BaseModel):
+    message: str
+    deleted_transaction_count: int
+
+class NormalizeMerchantsRequest(BaseModel):
+    descriptions: list[str]
+
+class NormalizeMerchantsResponse(BaseModel):
+    normalized: dict[str, str]   # raw description → clean merchant name

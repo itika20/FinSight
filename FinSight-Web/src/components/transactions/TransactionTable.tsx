@@ -67,7 +67,7 @@ const getConfidenceDisplay = (confidence?: string | null): ConfidenceDisplay =>
 // ─────────────────────────────────────────────
 
 const TransactionTable = () => {
-  const { transactions, updateTransactionCategory } = useTransactions()
+  const { filteredTransactions: transactions, updateTransactionCategory } = useTransactions()
 
   // Which row's dropdown is open
   const [editingId, setEditingId] = useState<string | null>(null)

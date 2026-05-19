@@ -20,6 +20,7 @@ import { listGoalsApi, deleteGoalApi } from '../api/goals'
 import type { SavedGoal, RecommendationDecision } from '../models/goals'
 import CreateGoalModal from '../components/goals/CreateGoalModal'
 import { GOAL_STATUS_LABELS, GOAL_STATUS_BADGE, CATEGORY_COLORS } from '../constants/config'
+import UserMenu from '../components/shared/UserMenu'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 0 })
@@ -102,7 +103,7 @@ const GoalDetailPage = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <NavBar user={user} onDashboard={() => navigate('/dashboard')} onGoals={() => navigate('/goals')} onLogout={logout} />
+        <NavBar user={user} onDashboard={() => navigate('/dashboard')} onGoals={() => navigate('/goals')} onAnalytics={() => navigate('/analytics')} onLogout={logout} />
         <div className="max-w-2xl mx-auto px-4 py-8 animate-pulse">
           <div className="h-5 bg-gray-200 rounded w-1/4 mb-6" />
           <div className="h-8 bg-gray-200 rounded w-2/3 mb-3" />
@@ -118,7 +119,7 @@ const GoalDetailPage = () => {
   if (loadError || !goal) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <NavBar user={user} onDashboard={() => navigate('/dashboard')} onGoals={() => navigate('/goals')} onLogout={logout} />
+        <NavBar user={user} onDashboard={() => navigate('/dashboard')} onGoals={() => navigate('/goals')} onAnalytics={() => navigate('/analytics')} onLogout={logout} />
         <div className="max-w-2xl mx-auto px-4 py-8">
           <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-6 text-center">
             <p className="text-sm text-red-700 font-medium mb-3">{loadError ?? 'Goal not found.'}</p>
@@ -150,7 +151,7 @@ const GoalDetailPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <NavBar user={user} onDashboard={() => navigate('/dashboard')} onGoals={() => navigate('/goals')} onLogout={logout} />
+      <NavBar user={user} onDashboard={() => navigate('/dashboard')} onGoals={() => navigate('/goals')} onAnalytics={() => navigate('/analytics')} onLogout={logout} />
 
       <div className="max-w-2xl mx-auto px-4 py-8">
 
@@ -276,26 +277,27 @@ interface NavBarProps {
   user: { email: string } | null
   onDashboard: () => void
   onGoals: () => void
+  onAnalytics: () => void
   onLogout: () => void
 }
 
-const NavBar = ({ user, onDashboard, onGoals, onLogout }: NavBarProps) => (
+const NavBar = ({ user, onDashboard, onGoals, onAnalytics, onLogout }: NavBarProps) => (
   <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
     <button onClick={onDashboard} className="text-left hover:opacity-75 transition-opacity">
       <h1 className="text-xl font-bold text-gray-900">FinSight</h1>
       <p className="text-xs text-gray-400">Personal Finance Analyser</p>
     </button>
     <div className="flex items-center gap-4">
-      <span className="text-sm text-gray-500">{user?.email}</span>
       <button onClick={onDashboard} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
         Dashboard
+      </button>
+      <button onClick={onAnalytics} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+        Analytics
       </button>
       <button onClick={onGoals} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
         Goals
       </button>
-      <button onClick={onLogout} className="text-sm text-gray-500 hover:text-red-600 transition-colors">
-        Logout
-      </button>
+      <UserMenu email={user?.email} onLogout={onLogout} />
     </div>
   </div>
 )

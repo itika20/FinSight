@@ -4,7 +4,9 @@
  */
 
 import api from './axios'
-import type { Transaction, DateRange } from '../models'
+import type { Transaction, DateRange, Upload, UploadListResponse, DeleteUploadResponse } from '../models'
+// Re-export so callers can import response types from this module if needed
+export type { Upload, UploadListResponse, DeleteUploadResponse }
 import { UPLOAD_ENDPOINTS } from '../constants/config'
 
 export interface UploadResponse {
@@ -154,4 +156,37 @@ export const getTransactionsApi = async (
 
   const response = await api.get<TransactionListResponse>(url)
   return response.data
+}
+
+/**
+ * List all completed statement uploads for the current user.
+ */
+export const getUploadsApi = async (): Promise<Upload[]> => {
+  const response = await api.get<UploadListResponse>(UPLOAD_ENDPOINTS.UPLOADS)
+  return response.data.uploads
+}
+
+/**
+ * Delete an upload record and all its transactions.
+ * VPA memory is preserved (user's learned categorisations are kept).
+ * Returns the number of transactions that were removed.
+ */
+export const deleteUploadApi = async (uploadId: string): Promise<DeleteUploadResponse> => {
+  const url = UPLOAD_ENDPOINTS.DELETE_UPLOAD.replace('{id}', uploadId)
+  const response = await api.delete<DeleteUploadResponse>(url)
+  return response.data
+}
+
+/**
+ * Normalize raw transaction descriptions to clean merchant names via GPT-4o-mini.
+ * Send deduplicated descriptions; receive a description→merchantName map.
+ */
+export const normalizeMerchantsApi = async (
+  descriptions: string[]
+): Promise<Record<string, string>> => {
+  const response = await api.post<{ normalized: Record<string, string> }>(
+    UPLOAD_ENDPOINTS.NORMALIZE_MERCHANTS,
+    { descriptions }
+  )
+  return response.data.normalized
 }

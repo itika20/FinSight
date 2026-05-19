@@ -7,6 +7,7 @@ import SignupPage from './pages/SignupPage.tsx'
 import Dashboard from './pages/DashboardPage.tsx'
 import GoalsHubPage from './pages/GoalsHubPage.tsx'
 import GoalDetailPage from './pages/GoalDetailPage.tsx'
+import AnalyticsPage from './pages/AnalyticsPage.tsx'
 import PublicRoute from './components/auth/PublicRoute.tsx'
 
 function App() {
@@ -42,6 +43,11 @@ function App() {
           <Route path="/goals/:id" element={
             <ProtectedRoute>
               <GoalDetailPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/analytics" element={
+            <ProtectedRoute>
+              <AnalyticsPage />
             </ProtectedRoute>
           } />
 

@@ -13,9 +13,11 @@ Security:
 - User cannot access other users' transactions
 """
 
+import json
 import logging
 from typing import Optional
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.constants import (
     LOGGER_UPLOAD,
     VALID_TRANSACTION_CATEGORIES,
@@ -26,8 +28,10 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
 from app.api.auth import get_current_user
 from app.schemas.upload import (
     CategoryUpdateRequest, CategoryUpdateResponse, TransactionListResponse,
-    UploadResponse, ParsedTransaction
+    UploadResponse, ParsedTransaction, UploadListResponse, DeleteUploadResponse,
+    NormalizeMerchantsRequest, NormalizeMerchantsResponse,
 )
+from openai import OpenAI
 from app.services.parsing_service import validate_file, parse_statement
 from app.services.upload_service import (
     create_upload_record,
@@ -35,8 +39,10 @@ from app.services.upload_service import (
     update_upload_failed,
     store_transactions,
     get_transactions,
-    update_transaction_category,       
-    bulk_update_categories       
+    update_transaction_category,
+    bulk_update_categories,
+    list_uploads,
+    delete_upload,
 )
 from app.services.categorise import (
     categorise_transaction,
@@ -557,3 +563,118 @@ def recategorise_transactions(current_user=Depends(get_current_user)):
         "message": f"Recategorised {len(updates)} transactions",
         "updated": len(updates)
     }
+
+
+# ============================================================================
+# ENDPOINT 5: List Upload History
+# ============================================================================
+
+@router.get("/uploads", response_model=UploadListResponse)
+def get_uploads(current_user=Depends(get_current_user)):
+    """
+    List all completed statement uploads for the authenticated user.
+    Returns uploads newest-first with filename, date, and transaction count.
+    """
+    user_id = str(current_user['id'])
+    logger.info(f"Listing uploads for user={user_id}")
+    with get_db() as conn:
+        uploads = list_uploads(conn, user_id)
+    logger.info(f"Returning {len(uploads)} uploads for user={user_id}")
+    return UploadListResponse(uploads=uploads, total_count=len(uploads))
+
+
+# ============================================================================
+# ENDPOINT 6: Delete Upload (transactions only, VPA memory preserved)
+# ============================================================================
+
+@router.delete("/uploads/{upload_id}", response_model=DeleteUploadResponse)
+def delete_upload_endpoint(
+    upload_id: str,
+    current_user=Depends(get_current_user)
+):
+    """
+    Delete an upload record and all its transactions.
+    VPA memory (learned merchant→category mappings) is intentionally preserved.
+    Returns deleted_transaction_count on success, 404 if not found.
+    """
+    user_id = str(current_user['id'])
+    logger.info(f"Delete upload requested: user={user_id}, upload={upload_id}")
+    with get_db() as conn:
+        result = delete_upload(conn, user_id, upload_id)
+    if result is None:
+        logger.warning(f"Upload {upload_id} not found for user {user_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Upload not found."
+        )
+    logger.info(f"Upload {upload_id} deleted: {result['deleted_transaction_count']} transactions removed")
+    return DeleteUploadResponse(
+        message="Upload deleted successfully.",
+        deleted_transaction_count=result['deleted_transaction_count']
+    )
+
+
+# ============================================================================
+# ENDPOINT 7: Normalize Merchant Names via OpenAI
+# ============================================================================
+
+@router.post("/normalize-merchants", response_model=NormalizeMerchantsResponse)
+async def normalize_merchants(
+    body: NormalizeMerchantsRequest,
+    current_user=Depends(get_current_user)
+):
+    """
+    Given a list of raw transaction descriptions, return a mapping of each
+    description to a clean merchant/brand name using GPT-4o-mini.
+
+    Descriptions are sent in a single batch request to minimise latency and cost.
+    The caller is expected to deduplicate descriptions before calling.
+    """
+    if not body.descriptions:
+        return NormalizeMerchantsResponse(normalized={})
+
+    # TODO: OpenAI call commented out to avoid charges — uncomment when ready
+    # logger.info(f"Normalizing {len(body.descriptions)} merchant descriptions")
+    #
+    # prompt = (
+    #     "You are a financial data processor specialising in Indian bank transactions.\n"
+    #     "Given the following raw transaction description strings (from bank statements), "
+    #     "return a JSON object that maps each description exactly to a clean merchant or brand name.\n\n"
+    #     "Rules:\n"
+    #     "- Use the well-known brand name when recognizable (e.g. 'Zomato', 'Amazon', 'Netflix').\n"
+    #     "- For UPI transfers to individuals (e.g. 'UPI/johndoe@okaxis'), return 'UPI Transfer'.\n"
+    #     "- For bank/NEFT/IMPS/RTGS transfers with no clear merchant, return 'Bank Transfer'.\n"
+    #     "- For ATM withdrawals, return 'ATM Withdrawal'.\n"
+    #     "- For unrecognizable entries, return a short clean label (max 25 characters).\n"
+    #     "- Every input description must appear as a key in the output JSON.\n"
+    #     "- Return only valid JSON — no markdown, no explanation.\n\n"
+    #     f"Descriptions:\n{json.dumps(body.descriptions, ensure_ascii=False)}"
+    # )
+    #
+    # try:
+    #     client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    #     response = client.chat.completions.create(
+    #         model="gpt-4o-mini",
+    #         messages=[{"role": "user", "content": prompt}],
+    #         response_format={"type": "json_object"},
+    #         temperature=0,
+    #     )
+    #     raw = response.choices[0].message.content or "{}"
+    #     normalized: dict[str, str] = json.loads(raw)
+    #
+    #     # Ensure every requested description has an entry (fallback to truncated raw)
+    #     for desc in body.descriptions:
+    #         if desc not in normalized:
+    #             normalized[desc] = desc[:28] + "…" if len(desc) > 28 else desc
+    #
+    #     logger.info(f"Normalized {len(normalized)} descriptions successfully")
+    #     return NormalizeMerchantsResponse(normalized=normalized)
+    #
+    # except Exception as e:
+    #     logger.error(f"Merchant normalization failed: {e}")
+    #     fallback = {d: (d[:28] + "…" if len(d) > 28 else d) for d in body.descriptions}
+    #     return NormalizeMerchantsResponse(normalized=fallback)
+
+    # Temporary passthrough — returns descriptions as-is until OpenAI is re-enabled
+    passthrough = {d: (d[:28] + "…" if len(d) > 28 else d) for d in body.descriptions}
+    return NormalizeMerchantsResponse(normalized=passthrough)
