@@ -57,6 +57,7 @@ Examples:
 
 import re
 from app.core.database import get_db
+from app.core.constants import VALID_TRANSACTION_CATEGORIES
 
 # ─────────────────────────────────────────────
 # LAYER 1 — Named merchant regex patterns
@@ -68,15 +69,23 @@ NAMED_PATTERNS = {
         r'COIN\b', r'SMALLCASE', r'PAYTM\s*MONEY',
         r'MUTUAL\s*FUND', r'SIP\b', r'NIFTY', r'SENSEX',
         r'ACHDR.*GROWW', r'ACHCR.*GROWW',
-        r'IRFC', r'ONGC\s*LTD', r'NSE', r'BSE',
+        r'IRFC', r'NSE', r'BSE',
     ],
     'Transport': [
+        # Public & rail
         r'IRCTC', r'DMRCUPI', r'DMRC\b', r'METRO\s*RAIL',
-        r'\bUBER\b', r'\bOLA\b', r'RAPIDO', r'REDBUS',
-        r'MAKEMYTRIP', r'GOIBIBO', r'CLEARTRIP',
+        # Ride-hailing
+        r'\bUBER\b', r'\bOLA\b', r'RAPIDO',
+        # Bus & intercity
+        r'REDBUS', r'ABHIBUS',
+        # Flight & trip booking (flights are transport; hotel stays → Entertainment)
+        r'MAKEMYTRIP', r'GOIBIBO', r'CLEARTRIP', r'YATRA', r'EASEMYTRIP',
         r'INDIGO', r'AIRINDIA', r'AIR\s*INDIA',
         r'SPICEJET', r'VISTARA', r'AKASAAIR',
-        r'ABHIBUS', r'YATRA', r'EASEMYTRIP',
+        # Fuel (merged from removed Fuel category)
+        r'\bHPCL\b', r'\bBPCL\b', r'\bIOCL\b',
+        r'INDIAN\s*OIL', r'\bPETROL\b', r'\bFUEL\b',
+        r'HP\s*PETRO', r'BHARAT\s*PETRO', r'SHELL\b', r'ESSAR\s*OIL',
     ],
     'Insurance': [
         r'APY\s*PREMIUM', r'\bLIC\b', r'HDFC\s*LIFE',
@@ -88,13 +97,13 @@ NAMED_PATTERNS = {
     'Utilities': [
         r'SMS\s*CHARG', r'\bAIRTEL\b', r'\bJIO\b', r'\bBSNL\b',
         r'TATA\s*POWER', r'BESCOM', r'MSEDCL', r'BSES',
-        r'OIL\s*AND\s*NATURAL\s*GAS', r'\bONGC\b',
         r'\bBBPS\b', r'ELECTRICITY', r'WATER\s*BILL',
         r'GAS\s*BILL', r'MAHANAGAR\s*GAS', r'IGL\b',
         r'TATA\s*SKY', r'DISH\s*TV', r'HATHWAY',
         r'ACT\s*FIBERNET', r'EXCITEL',
     ],
     'Food': [
+        # Delivery & restaurants
         r'ZOMATO', r'SWIGGY', r'DUNZO',
         r'DOMINO', r'\bKFC\b', r'MCDONALD', r'SUBWAY',
         r'BURGER\s*KING', r'PIZZAHUT', r'PIZZA\s*HUT',
@@ -109,39 +118,56 @@ NAMED_PATTERNS = {
         r'MORE\s*SUPERMARKET', r'STAR\s*BAZAAR',
         r'NATURE\s*BASKET', r'GROFERS', r'MILKBASKET',
     ],
-    'Shopping': [
-        r'AMAZON', r'FLIPKART', r'MYNTRA', r'\bAJIO\b',
-        r'MEESHO', r'\bNYKAA\b', r'SNAPDEAL', r'TATACLIQ',
-        r'RELIANCE\s*DIGITAL', r'CROMA\b', r'VIJAY\s*SALES',
-        r'SHOPIFY', r'FIRSTCRY', r'PEPPERFRY',
-        r'URBANIC', r'BEWAKOOF',
-    ],
-    'Healthcare': [
+    'Health': [
         r'PRACTO', r'PHARMEASY', r'NETMEDS', r'\bAPOLLO\b',
         r'MEDPLUS', r'\b1MG\b', r'HOSPITAL', r'CLINIC',
         r'DIAGNOSTIC', r'PATHLAB', r'DR\s*LALPATHLAB',
         r'THYROCARE', r'METROPOLIS', r'SRL\s*DIAGN',
         r'HEALTHIANS', r'MFINE', r'TATA\s*HEALTH',
     ],
-    'EMI & Loans': [
+    'Rent': [
+        # Loan/EMI repayments (merged from removed EMI & Loans category)
         r'\bEMI\b', r'\bLOAN\b', r'BAJAJ\s*FIN',
         r'HDFC\s*BANK\s*LOAN', r'\bCRED\b',
         r'EARLY\s*SALARY', r'MONEYVIEW', r'CASHE',
         r'NAVI\s*FINSERV', r'STASHFIN', r'KREDITBEE',
         r'HOME\s*LOAN', r'CAR\s*LOAN', r'PERSONAL\s*LOAN',
+        # Rent payments
+        r'\bRENT\b', r'HOUSE\s*RENT', r'RENTAL',
+        r'NOBROKER', r'MAGICBRICKS', r'NESTAWAY',
     ],
-    'Fuel': [
-        r'\bHPCL\b', r'\bBPCL\b', r'\bIOCL\b',
-        r'INDIAN\s*OIL', r'\bPETROL\b', r'\bFUEL\b',
-        r'HP\s*PETRO', r'BHARAT\s*PETRO',
-        r'SHELL\b', r'ESSAR\s*OIL',
+    'Entertainment': [
+        # Streaming & subscriptions
+        r'NETFLIX', r'HOTSTAR', r'DISNEY', r'PRIMEVIDEO',
+        r'SPOTIFY', r'GAANA', r'WYNK',
+        r'\bZEE5\b', r'SONYLIV', r'MXPLAYER',
+        r'YOUTUBE\s*PREMIUM',
+        # Movies & events
+        r'PVRINOX', r'\bPVR\b', r'\bINOX\b', r'BOOKMYSHOW',
+    ],
+    'Shopping': [
+        r'AMAZON', r'FLIPKART', r'MYNTRA', r'\bAJIO\b',
+        r'MEESHO', r'\bNYKAA\b', r'SNAPDEAL', r'TATACLIQ',
+        r'RELIANCE\s*DIGITAL', r'CROMA\b', r'VIJAY\s*SALES',
+        r'FIRSTCRY', r'PEPPERFRY',
     ],
     'Education': [
         r'UDEMY', r'COURSERA', r'UNACADEMY', r'\bBYJU',
-        r'WHITEHAT', r'VEDANTU', r'SCHOOL\s*FEE',
-        r'COLLEGE\s*FEE', r'TUITION', r'SKILLSHARE',
-        r'LINKEDIN\s*LEARN', r'PLURALSIGHT',
-        r'SIMPLILEARN', r'UPGRAD\b', r'SCALER',
+        r'WHITEHAT', r'VEDANTU', r'SKILLSHARE',
+        r'LINKEDIN\s*LEARN', r'SIMPLILEARN', r'UPGRAD\b', r'SCALER',
+    ],
+    'Trip': [
+        r'AIRBNB', r'OYO\b', r'TREEBO', r'FABHOTELS',
+        r'MMT\s*HOTEL', r'GOIBIBO\s*HOTEL',
+        r'TRIPADVISOR', r'THRILLOPHILIA',
+    ],
+    # Salary must appear before Transfers so "NEFT SALARY" is caught here, not there
+    'Salary': [
+        r'\bSALARY\b', r'\bSAL\s*/\s*\w+',
+        r'\bSTIPEND\b', r'\bPAYROLL\b', r'\bPAYSLIP\b',
+        r'EMP.*SAL', r'SAL.*EMP',
+        # JP Morgan Chase salary credits — appear as JPMORGAN, JP MORGAN, or JPMCB
+        r'JP\s*MORGAN', r'\bJPMCB\b', r'\bJPMORGAN\b',
     ],
     'Transfers': [
         r'NEFT\b', r'\bRTGS\b', r'\bIMPS\b',
@@ -393,7 +419,7 @@ def heuristic_guess(
     if abs_amount >= 10000 and abs_amount % 1000 == 0:
         return 'Transfers', 'low'
 
-    # Wefast = delivery service
+    # Wefast = delivery service → Shopping (purchase delivery)
     if 'wefast' in description.lower():
         return 'Shopping', 'medium'
 
@@ -401,9 +427,8 @@ def heuristic_guess(
     if 'appleservices' in description.lower() or 'apple' in description.lower():
         return 'Entertainment', 'medium'
 
-    # Razorpay = usually shopping/subscription payment gateway
-    if 'razorpay' in description.lower():
-        return 'Shopping', 'medium'
+    # Razorpay = payment gateway — could be anything; leave uncategorised
+    # (was Shopping, but Shopping no longer exists)
 
     return None, 'low'
 
@@ -637,13 +662,24 @@ def categorise_transaction(
     # ── Layer 1: Named merchant regex ──────────────
     category = match_named_patterns(description)
     if category:
-        return category, 'high'
+        # NEFT/RTGS/IMPS credits are salary, refunds, or business income —
+        # NOT internal transfers. Only classify these as Transfers when they
+        # are outgoing (debit). For credits, fall through so the income
+        # query can pick them up as regular income.
+        if (
+            category == 'Transfers'
+            and amount > 0
+            and re.search(r'\b(NEFT|RTGS|IMPS)\b', description, re.IGNORECASE)
+        ):
+            category = None  # fall through to VPA memory / heuristics
+        else:
+            return category, 'high'
 
     # ── Layer 2: VPA memory lookup ─────────────────
     vpa = extract_vpa(description)
     if vpa:
         remembered = lookup_vpa_memory(user_id, vpa)
-        if remembered:
+        if remembered and remembered in VALID_TRANSACTION_CATEGORIES:
             return remembered, 'high'
 
     # ── Layer 3: Heuristic guess ───────────────────

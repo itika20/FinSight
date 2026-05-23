@@ -48,11 +48,20 @@ export interface DeleteUploadResponse {
   deleted_transaction_count: number
 }
 
+export interface AccountOpeningBalance {
+  upload_id: string
+  filename: string
+  opening_balance: number
+}
+
 export interface TransactionContextType {
   transactions: Transaction[]           // full unfiltered list
   filteredTransactions: Transaction[]   // filtered by selectedMonth (or all if null)
   totalCount: number                    // count of filteredTransactions
   totalSpend: number                    // filtered by selectedMonth
+  totalIncome: number                   // sum of transactions tagged as 'Salary', filtered by selectedMonth
+  preSalaryBalance: number | null        // balance across accounts BEFORE this period's salary arrived
+  preSalaryAccounts: AccountOpeningBalance[]       // per-account breakdown for the pre-salary balance
   topCategory: string | null            // filtered by selectedMonth
   avgMonthlySavings: number             // overall average across all months (not filtered)
   dateRange: DateRange

@@ -44,15 +44,15 @@ rng = np.random.default_rng(RANDOM_STATE)
 # Domain constants (must match elasticity_model.py)
 # ─────────────────────────────────────────────────────────────────────────────
 CATEGORY_TYPE = {
-    'food': 0.50, 'groceries': 0.15, 'transport': 0.40, 'shopping': 0.90,
-    'entertainment': 1.00, 'utilities': 0.10, 'healthcare': 0.05,
-    'investments': 0.30, 'fuel': 0.45,
+    'food': 0.50, 'groceries': 0.20, 'transport': 0.40,
+    'entertainment': 0.90, 'shopping': 0.95, 'trip': 1.00, 'education': 0.30,
+    'utilities': 0.10, 'health': 0.05, 'investments': 0.30, 'rent': 0.00,
 }
 
 CATEGORY_ACCEPTANCE_RATE = {
-    'food': 0.45, 'groceries': 0.30, 'transport': 0.35, 'shopping': 0.60,
-    'entertainment': 0.65, 'utilities': 0.25, 'healthcare': 0.15,
-    'investments': 0.20, 'fuel': 0.40,
+    'food': 0.45, 'groceries': 0.30, 'transport': 0.35,
+    'entertainment': 0.65, 'shopping': 0.70, 'trip': 0.60, 'education': 0.35,
+    'utilities': 0.25, 'health': 0.15, 'investments': 0.20, 'rent': 0.05,
 }
 
 CATEGORIES = list(CATEGORY_TYPE.keys())

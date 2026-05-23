@@ -32,34 +32,38 @@ FEATURE_ORDER = [
     'food_pct',
     'groceries_pct',
     'transport_pct',
-    'shopping_pct',
     'entertainment_pct',
+    'shopping_pct',
+    'trip_pct',
+    'education_pct',
     'utilities_pct',
-    'healthcare_pct',
+    'health_pct',
     'investments_pct',
-    'fuel_pct',
+    'rent_pct',
     'savings_rate',
     'spend_volatility_normalised',
 ]
 
 CATEGORY_FEATURES = [
-    'food_pct', 'groceries_pct', 'transport_pct', 'shopping_pct',
-    'entertainment_pct', 'utilities_pct', 'healthcare_pct',
-    'investments_pct', 'fuel_pct',
+    'food_pct', 'groceries_pct', 'transport_pct',
+    'entertainment_pct', 'shopping_pct', 'trip_pct', 'education_pct',
+    'utilities_pct', 'health_pct', 'investments_pct', 'rent_pct',
 ]
 
 # Categories that are less painful to cut (purely heuristic ordering)
 # Used to prioritise which cuts to recommend first
 CUT_PRIORITY = [
-    'entertainment_pct',
-    'shopping_pct',
-    'food_pct',
-    'transport_pct',
-    'fuel_pct',
-    'groceries_pct',
-    'utilities_pct',
-    'healthcare_pct',
-    'investments_pct',  # last — cutting investments harms future wealth
+    'trip_pct',            # fully discretionary — holidays, hotel stays
+    'shopping_pct',        # highly discretionary — e-commerce, retail
+    'entertainment_pct',   # highly discretionary — streaming, movies, events
+    'education_pct',       # semi — can be deferred
+    'food_pct',            # semi — reduce eating out, keep home cooking
+    'groceries_pct',       # mostly essential
+    'transport_pct',       # semi — reduce Uber/cabs, keep commute
+    'utilities_pct',       # largely fixed but some flexibility
+    'health_pct',          # non-discretionary — rarely recommended
+    'investments_pct',     # last — cutting investments harms future wealth
+    'rent_pct',            # non-negotiable fixed obligation
 ]
 
 
@@ -72,50 +76,56 @@ TEST_USERS = {
     'Priya (medium income, dining-heavy)': {
         'monthly_income': 55000,
         'monthly_spend_by_category': {
-            'food':          16500,   # 30% — way above peers
-            'groceries':     5500,
-            'transport':     4000,
-            'shopping':      4500,
+            'food':          12000,   # 22% — above peers
+            'groceries':     5000,
+            'transport':     5500,
             'entertainment': 3000,
+            'shopping':      4000,
+            'trip':          1000,
+            'education':     500,
             'utilities':     5000,
-            'healthcare':    1500,
+            'health':        1500,
             'investments':   2000,
-            'fuel':          2500,
+            'rent':          8000,
         },
     },
-    'Rahul (high income, good investor)': {
+    'Rahul (high income, shop-heavy)': {
         'monthly_income': 120000,
         'monthly_spend_by_category': {
-            'food':          12000,
-            'groceries':     9000,
-            'transport':     8000,
-            'shopping':      20000,   # high shopping
-            'entertainment': 10000,
+            'food':          10000,
+            'groceries':     7000,
+            'transport':     10000,
+            'entertainment': 8000,
+            'shopping':      22000,   # very high shopping
+            'trip':          8000,
+            'education':     2000,
             'utilities':     8000,
-            'healthcare':    4000,
+            'health':        4000,
             'investments':   20000,
-            'fuel':          7000,
+            'rent':          12000,
         },
     },
     'Meera (low income, stretched)': {
         'monthly_income': 22000,
         'monthly_spend_by_category': {
-            'food':          8000,
+            'food':          5500,
             'groceries':     3000,
-            'transport':     2000,
-            'shopping':      1500,
+            'transport':     2500,
             'entertainment': 500,
+            'shopping':      1000,
+            'trip':          0,
+            'education':     0,
             'utilities':     3500,
-            'healthcare':    2000,
+            'health':        2000,
             'investments':   0,
-            'fuel':          1000,
+            'rent':          4000,
         },
     },
 }
 
 
 def build_profile(monthly_income: float, spend_by_category: dict) -> dict:
-    """Convert raw amounts into the 12-feature vector the model expects."""
+    """Convert raw amounts into the 14-feature vector the model expects."""
     total_spend = sum(spend_by_category.values())
     savings = monthly_income - total_spend
 

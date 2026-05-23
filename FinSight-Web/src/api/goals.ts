@@ -33,3 +33,25 @@ export const listGoalsApi = async (): Promise<SavedGoalListResponse> => {
 export const deleteGoalApi = async (goalId: string): Promise<void> => {
   await api.delete(`/goals/${goalId}`)
 }
+
+/**
+ * PATCH /goals/{id}/existing-savings
+ * Toggle whether the user's pre-existing investment savings count toward this goal's progress.
+ */
+export const toggleExistingSavingsApi = async (goalId: string, count: boolean): Promise<void> => {
+  await api.patch(`/goals/${goalId}/existing-savings`, { count_existing_savings: count })
+}
+
+/**
+ * POST /goals/{id}/recalculate-savings
+ * Re-snaps accumulated_savings_at_creation from current Investments transactions.
+ * Needed for goals created before the column existed (they store 0).
+ */
+export const recalculateSavingsApi = async (
+  goalId: string,
+): Promise<{ accumulated_savings_at_creation: number; message: string }> => {
+  const response = await api.post<{ accumulated_savings_at_creation: number; message: string }>(
+    `/goals/${goalId}/recalculate-savings`,
+  )
+  return response.data
+}

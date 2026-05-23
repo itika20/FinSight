@@ -20,13 +20,6 @@ export const API_CONFIG = {
 
 export const GOALS_ENDPOINT = '/goals'
 
-export const GOAL_PRESETS = [
-  { label: 'Emergency Fund', amount: 150000, months: 6 },
-  { label: 'Europe Trip',    amount: 200000, months: 12 },
-  { label: 'New Laptop',     amount: 80000,  months: 4 },
-  { label: 'Down Payment',   amount: 500000, months: 24 },
-] as const
-
 // Status badge display labels (on_track / at_risk / off_track → display string)
 export const GOAL_STATUS_LABELS: Record<string, string> = {
   on_track:  'On track',
@@ -89,6 +82,8 @@ export const UPLOAD_ENDPOINTS = {
   UPLOADS: '/upload/uploads',
   DELETE_UPLOAD: '/upload/uploads/{id}',
   NORMALIZE_MERCHANTS: '/upload/normalize-merchants',
+  OPENING_BALANCE: '/upload/opening-balance',
+  PRE_SALARY_BALANCE: '/upload/pre-salary-balance',
 } as const
 
 // Upload progress states
@@ -162,38 +157,40 @@ export const SUCCESS_MESSAGES = {
 
 export const TRANSACTION_CATEGORIES = [
   'Food',
-  'Groceries',
-  'Transport',
-  'Shopping',
-  'Entertainment',
-  'Healthcare',
-  'Utilities',
-  'EMI & Loans',
-  'Investments',
+  'Salary',
   'Transfers',
-  'Fuel',
-  'Education',
+  'Transport',
+  'Investments',
+  'Health',
+  'Utilities',
   'Insurance',
+  'Rent',
+  'Entertainment',
+  'Groceries',
+  'Education',
   'Other',
-  'Uncategorised'
+  'Uncategorised',
+  'Shopping',
+  'Trip'
 ] as const
 
 export const CATEGORY_COLORS: Record<typeof TRANSACTION_CATEGORIES[number], string> = {
-  'Food': '#FF6B6B',
-  'Groceries': '#4ECDC4',
-  'Transport': '#45B7D1',
-  'Shopping': '#FFA07A',
-  'Entertainment': '#98D8C8',
-  'Healthcare': '#F7DC6F',
-  'Utilities': '#BB8FCE',
-  'EMI & Loans': '#85C1E2',
-  'Investments': '#52B788',
-  'Transfers': '#A8DADC',
-  'Fuel': '#F4A261',
-  'Education': '#457B9D',
-  'Insurance': '#E76F51',
-  'Other': '#D3D3D3',
-  'Uncategorised': '#8B8B8B'
+  'Food':          '#FF6B6B',
+  'Salary':        '#34D399',
+  'Transfers':     '#A8DADC',
+  'Transport':     '#45B7D1',
+  'Investments':   '#52B788',
+  'Health':        '#F7DC6F',
+  'Utilities':     '#BB8FCE',
+  'Insurance':     '#E76F51',
+  'Rent':          '#8B9DC3',
+  'Entertainment': '#FFA07A',
+  'Groceries':     '#4CAF50',
+  'Education':     '#7986CB',
+  'Other':         '#BDBDBD',
+  'Uncategorised': '#8B8B8B',
+  'Shopping':      '#F06292',
+  'Trip':          '#26C6DA'
 } as const
 
 // ─────────────────────────────────────────────

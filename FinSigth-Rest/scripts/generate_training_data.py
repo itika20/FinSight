@@ -4,6 +4,12 @@ Synthetic training data generator for FinSight savings goal model.
 Generates 5,000 synthetic Indian household spending profiles parameterised
 from NSSO Household Consumer Expenditure Survey distributions.
 
+Key behavioural realism:
+  food and groceries are drawn from a bivariate normal with r = -0.40.
+  A person who eats out heavily tends to cook less (fewer grocery purchases),
+  and vice versa. Independent Gaussian draws would produce impossible
+  high-food + high-groceries combinations that distort cluster boundaries.
+
 Output: data/training_data.csv (5000 rows × 12 feature columns)
 
 Usage:
@@ -17,6 +23,11 @@ import os
 
 SEED = 42
 np.random.seed(SEED)
+
+# Food–groceries Pearson correlation embedded in bivariate normal.
+# r = -0.40: if food_pct is 1-std above its mean, groceries_pct is 0.40 stds
+# below its mean. Conservative; real-world estimates range -0.35 to -0.55.
+FOOD_GROCERIES_CORR = -0.40
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Income ranges (monthly, INR)
@@ -102,9 +113,24 @@ VOLATILITY_PARAMS = {
 }
 
 
+def _food_groceries_cov(food_std: float, groceries_std: float) -> list[list[float]]:
+    """
+    2×2 covariance matrix for [food_pct, groceries_pct] with FOOD_GROCERIES_CORR.
+    """
+    cov_fg = FOOD_GROCERIES_CORR * food_std * groceries_std
+    return [
+        [food_std ** 2, cov_fg],
+        [cov_fg,        groceries_std ** 2],
+    ]
+
+
 def generate_synthetic_user(income_bracket: str) -> dict:
     """
     Generates one synthetic user's monthly spending profile.
+
+    food_pct and groceries_pct are drawn from a bivariate normal
+    (correlation = FOOD_GROCERIES_CORR) to model the eat-out / cook-at-home
+    trade-off. All other categories are drawn independently.
 
     Returns a dict with 12 features:
         monthly_income_estimate, food_pct, groceries_pct, transport_pct,
@@ -117,10 +143,24 @@ def generate_synthetic_user(income_bracket: str) -> dict:
     props = BASE_PROPORTIONS[income_bracket]
     spending_pct = {}
 
-    for category, (mean, std) in props.items():
-        # Gaussian noise around NSSO mean; clipped to [0.005, 0.60]
+    # ── Food & groceries: bivariate normal with negative correlation ──────────
+    food_mean,      food_std      = props['food']
+    groceries_mean, groceries_std = props['groceries']
+
+    fg = np.random.multivariate_normal(
+        mean=[food_mean, groceries_mean],
+        cov=_food_groceries_cov(food_std, groceries_std),
+    )
+    spending_pct['food']      = float(np.clip(fg[0], 0.005, 0.60))
+    spending_pct['groceries'] = float(np.clip(fg[1], 0.005, 0.60))
+
+    # ── All other categories: independent Gaussian draws ─────────────────────
+    for category in props:
+        if category in ('food', 'groceries'):
+            continue
+        mean, std = props[category]
         proportion = np.clip(np.random.normal(mean, std), 0.005, 0.60)
-        spending_pct[category] = proportion
+        spending_pct[category] = float(proportion)
 
     total_spend_pct = sum(spending_pct.values())
 
@@ -135,22 +175,22 @@ def generate_synthetic_user(income_bracket: str) -> dict:
 
     # Spend volatility: normalised by income, independent of category mix
     vol_mean, vol_std = VOLATILITY_PARAMS[income_bracket]
-    spend_volatility_normalised = np.clip(
+    spend_volatility_normalised = float(np.clip(
         np.random.normal(vol_mean, vol_std), 0.01, 0.60
-    )
+    ))
 
     return {
-        'monthly_income_estimate':    round(income, 2),
-        'food_pct':                   round(spending_pct['food'], 4),
-        'groceries_pct':              round(spending_pct['groceries'], 4),
-        'transport_pct':              round(spending_pct['transport'], 4),
-        'shopping_pct':               round(spending_pct['shopping'], 4),
-        'entertainment_pct':          round(spending_pct['entertainment'], 4),
-        'utilities_pct':              round(spending_pct['utilities'], 4),
-        'healthcare_pct':             round(spending_pct['healthcare'], 4),
-        'investments_pct':            round(spending_pct['investments'], 4),
-        'fuel_pct':                   round(spending_pct['fuel'], 4),
-        'savings_rate':               round(savings_rate, 4),
+        'monthly_income_estimate':     round(income, 2),
+        'food_pct':                    round(spending_pct['food'], 4),
+        'groceries_pct':               round(spending_pct['groceries'], 4),
+        'transport_pct':               round(spending_pct['transport'], 4),
+        'shopping_pct':                round(spending_pct['shopping'], 4),
+        'entertainment_pct':           round(spending_pct['entertainment'], 4),
+        'utilities_pct':               round(spending_pct['utilities'], 4),
+        'healthcare_pct':              round(spending_pct['healthcare'], 4),
+        'investments_pct':             round(spending_pct['investments'], 4),
+        'fuel_pct':                    round(spending_pct['fuel'], 4),
+        'savings_rate':                round(savings_rate, 4),
         'spend_volatility_normalised': round(spend_volatility_normalised, 4),
     }
 
@@ -175,6 +215,8 @@ def generate_dataset() -> pd.DataFrame:
 def print_summary(df: pd.DataFrame) -> None:
     print(f"\nDataset shape: {df.shape}")
     print(f"\nFeature summary:\n{df.describe().round(4).to_string()}")
+    print(f"\nFood-groceries correlation (expect ~{FOOD_GROCERIES_CORR}):")
+    print(f"  Actual: {df['food_pct'].corr(df['groceries_pct']):.3f}")
     print(f"\nSavings rate distribution:")
     print(f"  Negative (overspenders): {(df['savings_rate'] < 0).sum()}")
     print(f"  0–10%:  {((df['savings_rate'] >= 0) & (df['savings_rate'] < 0.10)).sum()}")

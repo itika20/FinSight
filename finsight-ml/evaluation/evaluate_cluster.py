@@ -42,9 +42,11 @@ DATA_PATH = os.path.join(ROOT, 'data', 'training_data.csv')
 ARTIFACTS_DIR = os.path.join(ROOT, 'artifacts')
 
 FEATURES = [
-    'monthly_income_estimate', 'food_pct', 'groceries_pct', 'transport_pct',
-    'shopping_pct', 'entertainment_pct', 'utilities_pct', 'healthcare_pct',
-    'investments_pct', 'fuel_pct', 'savings_rate', 'spend_volatility_normalised',
+    'monthly_income_estimate',
+    'food_pct', 'groceries_pct', 'transport_pct',
+    'entertainment_pct', 'shopping_pct', 'trip_pct', 'education_pct',
+    'utilities_pct', 'health_pct', 'investments_pct', 'rent_pct',
+    'savings_rate', 'spend_volatility_normalised',
 ]
 
 # Income bracket boundaries (must match generate_synthetic.py)
@@ -252,35 +254,39 @@ def evaluate():
 OVERSPEND_THRESHOLD = 0.02
 
 CUT_PRIORITY = [
-    'entertainment', 'shopping', 'food', 'transport',
-    'fuel', 'groceries', 'utilities', 'healthcare', 'investments',
+    'trip', 'shopping', 'entertainment', 'education',
+    'food', 'groceries', 'transport', 'utilities',
+    'health', 'investments', 'rent',
 ]
 
-# DB category -> feature suffix mapping
+# DB category -> feature suffix mapping (matches CATEGORY_FEATURE_MAP in constants.py)
 CAT_MAP = {
     'food': 'food_pct', 'groceries': 'groceries_pct', 'transport': 'transport_pct',
-    'shopping': 'shopping_pct', 'entertainment': 'entertainment_pct',
-    'utilities': 'utilities_pct', 'healthcare': 'healthcare_pct',
-    'investments': 'investments_pct', 'fuel': 'fuel_pct',
+    'entertainment': 'entertainment_pct', 'shopping': 'shopping_pct',
+    'trip': 'trip_pct', 'education': 'education_pct',
+    'utilities': 'utilities_pct', 'health': 'health_pct',
+    'investments': 'investments_pct', 'rent': 'rent_pct',
 }
 
 # Five handcrafted test profiles — each has one obviously dominant overspend
 # and an expected top recommendation category.
 SANITY_CASES = [
     {
-        'name': 'Food overspender (45% on food)',
+        'name': 'Food overspender (45% food+groceries)',
         'profile': {
             'monthly_income_estimate': 60000,
-            'food_pct': 0.45,          # 45% -- peer avg ~16-20% in this income band
-            'groceries_pct': 0.08,
-            'transport_pct': 0.06,
-            'shopping_pct': 0.05,
-            'entertainment_pct': 0.02,
+            'food_pct': 0.30,           # 30% -- peer avg ~16% in this band
+            'groceries_pct': 0.15,      # 15% -- peer avg ~12%
+            'transport_pct': 0.08,
+            'entertainment_pct': 0.03,
+            'shopping_pct': 0.02,
+            'trip_pct': 0.01,
+            'education_pct': 0.01,
             'utilities_pct': 0.08,
-            'healthcare_pct': 0.03,
+            'health_pct': 0.03,
             'investments_pct': 0.05,
-            'fuel_pct': 0.04,
-            'savings_rate': 0.14,
+            'rent_pct': 0.12,
+            'savings_rate': 0.12,
             'spend_volatility_normalised': 0.14,
         },
         'goal_amount': 150000,
@@ -288,40 +294,44 @@ SANITY_CASES = [
         'expected_top': 'food',
     },
     {
-        'name': 'Entertainment heavy (18% on entertainment)',
+        'name': 'Shopping & trip heavy (Rs1.2L income)',
         'profile': {
-            'monthly_income_estimate': 80000,
-            'food_pct': 0.20,
-            'groceries_pct': 0.10,
+            'monthly_income_estimate': 120000,
+            'food_pct': 0.12,
+            'groceries_pct': 0.07,
             'transport_pct': 0.08,
-            'shopping_pct': 0.08,
-            'entertainment_pct': 0.18,  # 18% -- peer avg ~5-8%
-            'utilities_pct': 0.08,
-            'healthcare_pct': 0.03,
-            'investments_pct': 0.05,
-            'fuel_pct': 0.05,
-            'savings_rate': 0.15,
+            'entertainment_pct': 0.06,
+            'shopping_pct': 0.20,       # 20% -- peer avg ~7-8% in this band
+            'trip_pct': 0.12,           # 12% -- peer avg ~4%
+            'education_pct': 0.02,
+            'utilities_pct': 0.06,
+            'health_pct': 0.03,
+            'investments_pct': 0.12,
+            'rent_pct': 0.08,
+            'savings_rate': 0.04,
             'spend_volatility_normalised': 0.09,
         },
-        'goal_amount': 150000,
+        'goal_amount': 200000,
         'goal_months': 12,
-        'expected_top': 'entertainment',
+        'expected_top': 'trip',
     },
     {
-        'name': 'Shopping heavy (30% on shopping)',
+        'name': 'Shopping overspender on low income',
         'profile': {
-            'monthly_income_estimate': 50000,
-            'food_pct': 0.20,
-            'groceries_pct': 0.10,
-            'transport_pct': 0.06,
-            'shopping_pct': 0.30,       # 30% -- peer avg ~5-10%
+            'monthly_income_estimate': 45000,
+            'food_pct': 0.22,
+            'groceries_pct': 0.12,
+            'transport_pct': 0.08,
             'entertainment_pct': 0.03,
-            'utilities_pct': 0.08,
-            'healthcare_pct': 0.03,
-            'investments_pct': 0.03,
-            'fuel_pct': 0.04,
-            'savings_rate': 0.13,
-            'spend_volatility_normalised': 0.14,
+            'shopping_pct': 0.22,       # 22% -- peer avg ~2% for low income
+            'trip_pct': 0.01,
+            'education_pct': 0.01,
+            'utilities_pct': 0.12,
+            'health_pct': 0.03,
+            'investments_pct': 0.02,
+            'rent_pct': 0.12,
+            'savings_rate': 0.02,
+            'spend_volatility_normalised': 0.18,
         },
         'goal_amount': 60000,
         'goal_months': 6,
@@ -332,15 +342,17 @@ SANITY_CASES = [
         'profile': {
             'monthly_income_estimate': 120000,
             'food_pct': 0.12,
-            'groceries_pct': 0.08,
-            'transport_pct': 0.06,
-            'shopping_pct': 0.10,
+            'groceries_pct': 0.07,
+            'transport_pct': 0.08,
             'entertainment_pct': 0.06,
+            'shopping_pct': 0.06,
+            'trip_pct': 0.03,
+            'education_pct': 0.02,
             'utilities_pct': 0.06,
-            'healthcare_pct': 0.03,
+            'health_pct': 0.03,
             'investments_pct': 0.20,
-            'fuel_pct': 0.05,
-            'savings_rate': 0.24,       # saving Rs28,800/month; goal needs Rs12,500
+            'rent_pct': 0.10,
+            'savings_rate': 0.17,       # saving Rs20,400/month; goal needs Rs12,500
             'spend_volatility_normalised': 0.06,
         },
         'goal_amount': 150000,
@@ -348,20 +360,22 @@ SANITY_CASES = [
         'expected_top': None,           # no cutbacks needed
     },
     {
-        'name': 'Transport heavy commuter (20% on transport)',
+        'name': 'Transport heavy commuter (22% on transport)',
         'profile': {
             'monthly_income_estimate': 45000,
             'food_pct': 0.22,
-            'groceries_pct': 0.10,
-            'transport_pct': 0.20,      # 20% -- peer avg ~7-10%
-            'shopping_pct': 0.06,
-            'entertainment_pct': 0.03,
-            'utilities_pct': 0.10,
-            'healthcare_pct': 0.04,
-            'investments_pct': 0.04,
-            'fuel_pct': 0.05,
-            'savings_rate': 0.16,
-            'spend_volatility_normalised': 0.14,
+            'groceries_pct': 0.12,
+            'transport_pct': 0.22,      # 22% -- peer avg ~10% for low income
+            'entertainment_pct': 0.02,
+            'shopping_pct': 0.02,
+            'trip_pct': 0.01,
+            'education_pct': 0.01,
+            'utilities_pct': 0.12,
+            'health_pct': 0.04,
+            'investments_pct': 0.02,
+            'rent_pct': 0.12,
+            'savings_rate': 0.08,
+            'spend_volatility_normalised': 0.16,
         },
         'goal_amount': 80000,
         'goal_months': 8,

@@ -22,21 +22,22 @@ SUPPORTED_FILE_TYPE = 'pdf'
 
 # Valid expense categories for user transactions
 VALID_TRANSACTION_CATEGORIES = {
-    'Food',
-    'Groceries',
-    'Transport',
-    'Shopping',
-    'Entertainment',
-    'Healthcare',
-    'Utilities',
-    'EMI & Loans',
-    'Investments',
-    'Transfers',
-    'Fuel',
-    'Education',
-    'Insurance',
-    'Other',
-    'Uncategorised'
+    'Food',           # Restaurants, cafes, takeaway, food delivery
+    'Salary',         # Salary, stipend, and other employment income credits
+    'Transfers',      # Internal account moves (netted out of income)
+    'Transport',      # Commute, cabs, fuel, flights, trains, buses
+    'Investments',    # MFs, stocks, SIPs, demat
+    'Health',         # Medical, pharmacy, diagnostics
+    'Utilities',      # Electricity, water, gas, internet, phone, OTT
+    'Insurance',      # Life, health, vehicle premiums
+    'Rent',           # Rent, home loan EMI, other fixed obligations
+    'Entertainment',  # Events, movies, subscriptions, leisure activities
+    'Groceries',      # Supermarkets, online grocery delivery
+    'Education',      # Courses, tuition, ed-tech platforms
+    'Other',          # Miscellaneous spend not fitting other categories
+    'Uncategorised',  # Default fallback when category cannot be determined
+    'Shopping',       # E-commerce, retail, clothing, electronics
+    'Trip',           # Hotels, holiday packages, travel experiences
 }
 
 # Default category when transaction cannot be categorized
@@ -96,10 +97,16 @@ ERROR_INVALID_CATEGORY = "Invalid category. Must be one of: {valid_categories}"
 # ─────────────────────────────────────────────
 
 # Minimum months of transaction history to compute a reliable profile
-GOAL_MIN_MONTHS_DATA = 2
+GOAL_MIN_MONTHS_DATA = 1  # TEMP: lowered from 2 for testing
 
 # Minimum percentage-point gap to flag a category as overspending
 GOAL_OVERSPEND_THRESHOLD = 0.02
+
+# Day-of-month on or after which a salary credit is treated as income for the
+# NEXT calendar month.  Rationale: salaries paid on 20th–31st are typically
+# spent in the following month (e.g. March-28 salary funds April spending).
+# Salaries paid on the 1st–19th are attributed to the same calendar month.
+SALARY_SHIFT_DAY = 20
 
 # Minimum single credit transaction to count toward income estimate
 INCOME_MIN_CREDIT_AMOUNT = 5000.0
@@ -113,32 +120,38 @@ CATEGORY_FEATURE_MAP = {
     'Shopping':      'shopping',
     'Entertainment': 'entertainment',
     'Utilities':     'utilities',
-    'Healthcare':    'healthcare',
+    'Health':        'healthcare',   # model feature name is 'healthcare_pct', not 'health_pct'
     'Investments':   'investments',
-    'Fuel':          'fuel',
+    # Rent, Trip, Education — not in the trained cluster model or benchmarks;
+    #   including them would produce false overspend gaps (peer_pct = 0 always).
+    # fuel_pct — in the trained model but has no current DB category;
+    #   set explicitly to 0.0 in build_user_profile.
+    # Insurance, Salary, Transfers, Other, Uncategorised — not modelled.
 }
 
 # Categories that must never appear as cutback recommendations.
-#   Investments  — they ARE savings; recommending cuts contradicts the goal
-#   EMI & Loans  — fixed legal obligations; user cannot reduce them
-#   Healthcare   — non-discretionary; cutting is harmful
-NON_CUTTABLE_CATEGORIES: frozenset = frozenset({"Investments", "EMI & Loans", "Healthcare"})
+#   Investments — they ARE savings; recommending cuts contradicts the goal
+#   Rent        — fixed legal obligations; user cannot reduce them
+#   Health      — non-discretionary; cutting is harmful
+NON_CUTTABLE_CATEGORIES: frozenset = frozenset({"Investments", "Rent", "Health"})
 
 # Minimum percentage-point gap below peer benchmark before surfacing the
 # "you under-invest compared to peers" insight (avoids noise for tiny gaps)
 INVESTMENT_INSIGHT_THRESHOLD: float = 0.02
 
-# Order in which to allocate cuts (less painful / most discretionary first)
+# Order in which to allocate cuts (most discretionary first)
 GOAL_CUT_PRIORITY = [
-    'entertainment',
-    'shopping',
-    'food',
-    'transport',
-    'fuel',
-    'groceries',
-    'utilities',
-    'healthcare',
-    'investments',   # last — cutting investments harms long-term wealth
+    'trip',            # fully discretionary — holidays, hotels
+    'shopping',        # highly discretionary — e-commerce, retail
+    'entertainment',   # highly discretionary — streaming, movies, events
+    'education',       # semi — courses can be deferred
+    'food',            # partial — reduce eating out, not home cooking
+    'groceries',       # mostly essential but some downsizing possible
+    'transport',       # partial — reduce Uber, keep commute
+    'utilities',       # largely fixed but some flexibility
+    'health',          # non-discretionary — rarely recommended
+    'investments',     # last — cutting investments harms long-term wealth
+    'rent',            # non-negotiable fixed obligation
 ]
 
 # Error messages
@@ -146,7 +159,8 @@ ERROR_INSUFFICIENT_HISTORY = (
     "Need at least {min_months} months of transaction data to compute your spending profile."
 )
 ERROR_INCOME_UNKNOWN = (
-    "Cannot estimate income: no credit transactions above Rs{threshold:,.0f}."
+    "Cannot estimate income: no transactions are tagged as 'Salary'. "
+    "Open your transactions and set the category to Salary for your salary credits."
 )
 ERROR_GOAL_ALREADY_MET = "You are already saving enough to reach this goal — no cutbacks needed."
 

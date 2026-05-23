@@ -39,20 +39,22 @@ FEATURES = [
     'food_pct',
     'groceries_pct',
     'transport_pct',
-    'shopping_pct',
     'entertainment_pct',
+    'shopping_pct',
+    'trip_pct',
+    'education_pct',
     'utilities_pct',
-    'healthcare_pct',
+    'health_pct',
     'investments_pct',
-    'fuel_pct',
+    'rent_pct',
     'savings_rate',
     'spend_volatility_normalised',
 ]
 
 CATEGORY_FEATURES = [
-    'food_pct', 'groceries_pct', 'transport_pct', 'shopping_pct',
-    'entertainment_pct', 'utilities_pct', 'healthcare_pct',
-    'investments_pct', 'fuel_pct',
+    'food_pct', 'groceries_pct', 'transport_pct',
+    'entertainment_pct', 'shopping_pct', 'trip_pct', 'education_pct',
+    'utilities_pct', 'health_pct', 'investments_pct', 'rent_pct',
 ]
 
 K_RANGE = range(3, 15)

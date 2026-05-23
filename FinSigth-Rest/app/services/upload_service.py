@@ -452,6 +452,7 @@ def bulk_update_categories(
                     UPDATE transactions
                     SET category = %s, confidence = %s
                     WHERE id = %s
+                    AND confidence != 'user_confirmed'
                     """,
                     (category, confidence, transaction_id)
                 )
@@ -461,3 +462,233 @@ def bulk_update_categories(
                 raise
     
     logger.debug(f"Bulk category update complete")
+
+
+def get_opening_balances(conn, user_id: str, month_str: str) -> list[dict]:
+    """
+    For each account (upload) that has transactions in the given month,
+    return the opening balance — i.e. the account balance at the START of the month,
+    before any transactions for that month occurred.
+
+    Strategy per account (primary uploads only — statement must have >50% of its
+    transactions in the target month, to exclude cross-month statements):
+
+    1. Primary: look for an explicit "Opening Balance" / "Balance B/F" row in the
+       statement for that month and read its amount directly.
+    2. Fallback: take the first real transaction of the month that has a running
+       balance column and back-calculate:
+           opening = balance + ABS(amount)  (debit)
+           opening = balance - ABS(amount)  (credit)
+           opening = balance - amount  (if credit — balance went up, so subtract)
+
+    Args:
+        conn:       Database connection (psycopg2, RealDictCursor)
+        user_id:    Filter to this user's uploads only
+        month_str:  'YYYY-MM' string for the target month
+
+    Returns:
+        List of dicts: [{upload_id, filename, opening_balance}, ...]
+        Only includes accounts where a balance value could be determined.
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH
+            tx_counts AS (
+                -- Count each upload's transactions: how many land in the target month
+                -- vs the upload's total, so we can identify the primary statement.
+                SELECT
+                    t.upload_id,
+                    COUNT(*) FILTER (WHERE TO_CHAR(t.date, 'YYYY-MM') = %s) AS in_month,
+                    COUNT(*)                                                  AS total
+                FROM transactions t
+                WHERE t.user_id = %s
+                GROUP BY t.upload_id
+            ),
+            primary_uploads AS (
+                -- Only the statement(s) whose majority of rows are in the target month.
+                -- Excludes cross-boundary statements (e.g. Mar 10–Apr 9 statement when
+                -- querying April) that would add a spurious second opening balance.
+                SELECT upload_id
+                FROM tx_counts
+                WHERE in_month * 2 > total
+            ),
+            opening_rows AS (
+                -- Best source: explicit "Opening Balance" / "Balance B/F" row written
+                -- by the bank at the top of the statement.  Read the amount directly —
+                -- no arithmetic needed.
+                SELECT DISTINCT ON (t.upload_id)
+                    t.upload_id,
+                    ABS(t.amount) AS opening_balance
+                FROM transactions t
+                JOIN primary_uploads p ON p.upload_id = t.upload_id
+                WHERE TO_CHAR(t.date, 'YYYY-MM') = %s
+                  AND (
+                        t.description ILIKE '%%opening balance%%'
+                     OR t.description ILIKE '%%balance b/f%%'
+                     OR t.description ILIKE '%%balance brought forward%%'
+                  )
+                ORDER BY t.upload_id, t.date ASC, t.id ASC
+            ),
+            first_in AS (
+                -- Fallback: earliest real transaction of the month that has a running
+                -- balance column.  Skip opening-balance rows so we don't back-calculate
+                -- on top of a value that already IS the opening balance.
+                SELECT DISTINCT ON (t.upload_id)
+                    t.upload_id,
+                    t.balance + CASE
+                        WHEN t.type = 'debit'  THEN  ABS(t.amount)
+                        ELSE                        -ABS(t.amount)
+                    END AS opening_balance
+                FROM transactions t
+                JOIN primary_uploads p ON p.upload_id = t.upload_id
+                WHERE TO_CHAR(t.date, 'YYYY-MM') = %s
+                  AND t.balance IS NOT NULL
+                  AND t.description NOT ILIKE '%%opening balance%%'
+                  AND t.description NOT ILIKE '%%balance b/f%%'
+                  AND t.description NOT ILIKE '%%balance brought forward%%'
+                ORDER BY t.upload_id, t.date ASC, t.id ASC
+            )
+            SELECT
+                p.upload_id,
+                up.filename,
+                COALESCE(ob.opening_balance, fi.opening_balance) AS opening_balance
+            FROM primary_uploads p
+            LEFT JOIN opening_rows ob ON ob.upload_id = p.upload_id
+            LEFT JOIN first_in    fi ON fi.upload_id = p.upload_id
+            JOIN  uploads         up ON up.id = p.upload_id
+            WHERE COALESCE(ob.opening_balance, fi.opening_balance) IS NOT NULL
+            """,
+            (month_str, user_id, month_str, month_str),
+        )
+        rows = cursor.fetchall()
+
+    return [
+        {
+            'upload_id':       str(row['upload_id']),
+            'filename':        row['filename'] or '',
+            'opening_balance': float(row['opening_balance']),
+        }
+        for row in rows
+    ]
+
+
+def get_pre_salary_balance(conn, user_id: str, month_str: str) -> list[dict]:
+    """
+    For each account (upload) that has transactions in the given month, return
+    the balance BEFORE the window-starting salary arrived.
+
+    The window-starting salary is the earliest Salary credit in the PREVIOUS
+    calendar month with day >= SALARY_SHIFT_DAY (20).
+
+    Strategy per account:
+    1. Primary: find that salary transaction and read
+           pre_salary = transaction.balance - ABS(transaction.amount)
+       (balance column is the post-credit value; subtracting the credit gives pre-salary)
+    2. Fallback A: explicit "Opening Balance" / "Balance B/F" row in the current month.
+    3. Fallback B: back-calculate from the first real transaction of the current month.
+
+    Accounts that received no salary last month (e.g. a secondary spending account)
+    fall through to fallbacks A/B, which return the calendar-month opening — correct
+    because no salary was deposited there, so April-1 balance IS the pre-salary balance
+    for that account.
+
+    Args:
+        conn:       psycopg2 connection (RealDictCursor)
+        user_id:    owner filter
+        month_str:  'YYYY-MM' target month (e.g. '2026-04')
+
+    Returns:
+        List of dicts: [{upload_id, filename, opening_balance (pre-salary value)}, ...]
+    """
+    y, m = int(month_str[:4]), int(month_str[5:7])
+    prev_month = f"{y - 1}-12" if m == 1 else f"{y}-{str(m - 1).zfill(2)}"
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH
+            tx_counts AS (
+                SELECT t.upload_id,
+                       COUNT(*) FILTER (WHERE TO_CHAR(t.date, 'YYYY-MM') = %s) AS in_month,
+                       COUNT(*) AS total
+                FROM transactions t
+                WHERE t.user_id = %s
+                GROUP BY t.upload_id
+            ),
+            primary_uploads AS (
+                SELECT upload_id FROM tx_counts WHERE in_month * 2 > total
+            ),
+            -- Best source: balance column on the first salary credit of the prev month
+            -- that falls on or after SALARY_SHIFT_DAY.
+            -- balance column = post-credit value; subtracting amount gives pre-salary.
+            salary_start AS (
+                SELECT DISTINCT ON (t.upload_id)
+                    t.upload_id,
+                    t.balance - ABS(t.amount) AS pre_salary_balance
+                FROM transactions t
+                JOIN primary_uploads p ON p.upload_id = t.upload_id
+                WHERE TO_CHAR(t.date, 'YYYY-MM') = %s
+                  AND t.category = 'Salary'
+                  AND t.type = 'credit'
+                  AND EXTRACT(DAY FROM t.date) >= 20
+                  AND t.balance IS NOT NULL
+                ORDER BY t.upload_id, t.date ASC, t.id ASC
+            ),
+            -- Fallback A: explicit "Opening Balance" row in the current month's statement
+            opening_rows AS (
+                SELECT DISTINCT ON (t.upload_id)
+                    t.upload_id,
+                    ABS(t.amount) AS fallback_balance
+                FROM transactions t
+                JOIN primary_uploads p ON p.upload_id = t.upload_id
+                WHERE TO_CHAR(t.date, 'YYYY-MM') = %s
+                  AND (t.description ILIKE '%%opening balance%%'
+                    OR t.description ILIKE '%%balance b/f%%'
+                    OR t.description ILIKE '%%balance brought forward%%')
+                ORDER BY t.upload_id, t.date ASC, t.id ASC
+            ),
+            -- Fallback B: back-calculate from first real transaction of the current month
+            first_in AS (
+                SELECT DISTINCT ON (t.upload_id)
+                    t.upload_id,
+                    t.balance + CASE
+                        WHEN t.type = 'debit' THEN  ABS(t.amount)
+                        ELSE                        -ABS(t.amount)
+                    END AS fallback_balance
+                FROM transactions t
+                JOIN primary_uploads p ON p.upload_id = t.upload_id
+                WHERE TO_CHAR(t.date, 'YYYY-MM') = %s
+                  AND t.balance IS NOT NULL
+                  AND t.description NOT ILIKE '%%opening balance%%'
+                  AND t.description NOT ILIKE '%%balance b/f%%'
+                  AND t.description NOT ILIKE '%%balance brought forward%%'
+                ORDER BY t.upload_id, t.date ASC, t.id ASC
+            )
+            SELECT
+                p.upload_id,
+                up.filename,
+                COALESCE(
+                    ss.pre_salary_balance,
+                    ob.fallback_balance,
+                    fi.fallback_balance
+                ) AS opening_balance
+            FROM primary_uploads p
+            LEFT JOIN salary_start ss ON ss.upload_id = p.upload_id
+            LEFT JOIN opening_rows ob ON ob.upload_id = p.upload_id
+            LEFT JOIN first_in     fi ON fi.upload_id = p.upload_id
+            JOIN  uploads          up ON up.id = p.upload_id
+            WHERE COALESCE(ss.pre_salary_balance, ob.fallback_balance, fi.fallback_balance) IS NOT NULL
+            """,
+            (month_str, user_id, prev_month, month_str, month_str),
+        )
+        rows = cursor.fetchall()
+
+    return [
+        {
+            'upload_id':       str(row['upload_id']),
+            'filename':        row['filename'] or '',
+            'opening_balance': float(row['opening_balance']),
+        }
+        for row in rows
+    ]

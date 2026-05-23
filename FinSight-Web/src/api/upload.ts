@@ -63,6 +63,9 @@ export const uploadStatementApi = async (
       // Override default Content-Type — axios sets correct multipart boundary automatically
       'Content-Type': 'multipart/form-data'
     },
+    // PDF parsing calls GPT-4o for each 3-page chunk, which takes 30-60s per chunk.
+    // A 10-page statement = ~4 chunks = up to 4 minutes. Use 5 min to be safe.
+    timeout: 300_000,
     onUploadProgress: (progressEvent) => {
       if (onUploadProgress && progressEvent.total) {
         // Calculate percentage: 0-100
@@ -174,6 +177,43 @@ export const getUploadsApi = async (): Promise<Upload[]> => {
 export const deleteUploadApi = async (uploadId: string): Promise<DeleteUploadResponse> => {
   const url = UPLOAD_ENDPOINTS.DELETE_UPLOAD.replace('{id}', uploadId)
   const response = await api.delete<DeleteUploadResponse>(url)
+  return response.data
+}
+
+export interface AccountOpeningBalance {
+  upload_id: string
+  filename: string
+  opening_balance: number
+}
+
+export interface OpeningBalanceResponse {
+  month: string
+  total_opening_balance: number | null
+  accounts: AccountOpeningBalance[]
+}
+
+/**
+ * Get the opening balance (account balance at the START of a month) summed
+ * across all uploaded accounts that have transaction data for that month.
+ *
+ * @param month - 'YYYY-MM' string (e.g. '2024-09')
+ */
+export const getOpeningBalanceApi = async (month: string): Promise<OpeningBalanceResponse> => {
+  const response = await api.get<OpeningBalanceResponse>(
+    `${UPLOAD_ENDPOINTS.OPENING_BALANCE}?month=${month}`
+  )
+  return response.data
+}
+
+/**
+ * Get the pre-salary balance: what was in each account BEFORE this month's
+ * salary arrived (the earliest late-month salary in the previous calendar month).
+ * Falls back to the calendar-month opening balance for accounts with no salary.
+ */
+export const getPreSalaryBalanceApi = async (month: string): Promise<OpeningBalanceResponse> => {
+  const response = await api.get<OpeningBalanceResponse>(
+    `${UPLOAD_ENDPOINTS.PRE_SALARY_BALANCE}?month=${month}`
+  )
   return response.data
 }
 

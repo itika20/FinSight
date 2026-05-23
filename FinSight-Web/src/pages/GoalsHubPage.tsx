@@ -8,7 +8,7 @@
  *   - [+ New Goal] button opens CreateGoalModal
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { listGoalsApi, deleteGoalApi } from '../api/goals'
@@ -21,8 +21,8 @@ import UserMenu from '../components/shared/UserMenu'
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 0 })
 
-const targetDateLabel = (months: number): string => {
-  const d = new Date()
+const targetDateLabel = (months: number, createdAt: string): string => {
+  const d = new Date(createdAt)
   d.setMonth(d.getMonth() + months)
   return d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
 }
@@ -42,12 +42,6 @@ const GoalsHubPage = () => {
   const [deletingId,        setDeletingId]        = useState<string | null>(null)
   const [isModalOpen,       setIsModalOpen]       = useState(false)
 
-  // ── Global income override (applies to all goal calculations) ──
-  const [incomeOverride,    setIncomeOverride]    = useState<number | undefined>(undefined)
-  const [showIncomeInput,   setShowIncomeInput]   = useState(false)
-  const [incomeInputDisplay,setIncomeInputDisplay]= useState('')
-  const incomeInitialisedRef = useRef(false)
-
   // ── Fetch saved goals ──────────────────────────────────────────
   const loadGoals = useCallback(async () => {
     setIsLoading(true)
@@ -64,37 +58,9 @@ const GoalsHubPage = () => {
 
   useEffect(() => { loadGoals() }, [loadGoals])
 
-  // ── Seed income from the most recently saved goal (first load only) ─
-  useEffect(() => {
-    if (incomeInitialisedRef.current || !listData) return
-    incomeInitialisedRef.current = true
-    const sorted = [...listData.goals].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    )
-    const saved = sorted.find(g => g.income_override != null)?.income_override
-    if (saved != null) {
-      setIncomeOverride(saved)
-      setIncomeInputDisplay(saved.toLocaleString('en-IN'))
-    }
-  }, [listData])
-
-  // ── Income editor handlers ─────────────────────────────────────
-  const confirmIncome = () => {
-    const val = parseFloat(incomeInputDisplay.replace(/,/g, ''))
-    if (isNaN(val) || val <= 0) return
-    setIncomeOverride(val)
-    setShowIncomeInput(false)
-  }
-
-  const resetIncome = () => {
-    setIncomeOverride(undefined)
-    setIncomeInputDisplay('')
-    setShowIncomeInput(false)
-  }
-
-  // ── Effective income & saving for the snapshot card ────────────
-  const effectiveIncome  = incomeOverride ?? listData?.monthly_income_estimate ?? 0
-  const effectiveSaving  = listData
+  // ── Income & saving for the snapshot card (from Salary-tagged transactions) ──
+  const effectiveIncome = listData?.monthly_income_estimate ?? 0
+  const effectiveSaving = listData
     ? Math.max(effectiveIncome - listData.avg_monthly_spend, 0)
     : 0
 
@@ -168,79 +134,6 @@ const GoalsHubPage = () => {
             New Goal
           </button>
         </div>
-
-        {/* ── Income setting ────────────────────────────────── */}
-        {listData && (
-          <div className="bg-white border border-gray-200 rounded-xl px-5 py-3 mb-4">
-            {!showIncomeInput ? (
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Monthly Income</p>
-                  <p className="text-sm font-semibold text-gray-800 mt-0.5">
-                    ₹{fmt(effectiveIncome)}/month
-                    {incomeOverride != null
-                      ? <span className="text-xs text-blue-500 font-normal ml-1">(adjusted by you)</span>
-                      : <span className="text-xs text-gray-400 font-normal ml-1">(auto-detected)</span>
-                    }
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {incomeOverride != null && (
-                    <button
-                      onClick={resetIncome}
-                      className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      Reset
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setIncomeInputDisplay(effectiveIncome.toLocaleString('en-IN'))
-                      setShowIncomeInput(true)
-                    }}
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700 border border-blue-200 bg-blue-50 px-2.5 py-1 rounded-lg transition-colors"
-                  >
-                    {incomeOverride != null ? 'Edit' : 'Adjust'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <p className="text-xs text-gray-500 flex-shrink-0">Monthly income</p>
-                <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm select-none">₹</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={incomeInputDisplay}
-                    onChange={e => setIncomeInputDisplay(
-                      (() => {
-                        const digits = e.target.value.replace(/\D/g, '')
-                        return digits ? parseInt(digits, 10).toLocaleString('en-IN') : ''
-                      })()
-                    )}
-                    autoFocus
-                    onKeyDown={e => { if (e.key === 'Enter') confirmIncome() }}
-                    placeholder="85,000"
-                    className="w-full pl-7 pr-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                </div>
-                <button
-                  onClick={confirmIncome}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => setShowIncomeInput(false)}
-                  className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors flex-shrink-0"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Monthly snapshot */}
         {listData && (
@@ -329,7 +222,7 @@ const GoalsHubPage = () => {
                         </span>
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        ₹{fmt(goal.goal_amount)} by {targetDateLabel(goal.goal_months)}
+                        ₹{fmt(goal.goal_amount)} by {targetDateLabel(goal.goal_months, goal.created_at)}
                       </p>
                     </div>
                     <p className="text-base font-bold text-gray-800 flex-shrink-0">
@@ -337,25 +230,49 @@ const GoalsHubPage = () => {
                     </p>
                   </div>
 
-                  {/* Progress bar (0% — actual tracking in GoalDetailPage) */}
-                  <div className="mb-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-400">Progress</span>
-                      <span className="text-xs font-medium text-gray-500">0% saved</span>
+                  {/* Tracking progress bar */}
+                  {goal.tracking && goal.tracking.months_elapsed > 0 && (
+                    <div className="mb-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-400">Progress</span>
+                        <span className="text-xs font-medium text-gray-500">
+                          {goal.tracking.progress_pct.toFixed(1)}% · ₹{fmt(goal.tracking.cumulative_contribution)} saved
+                        </span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{
+                            width: `${Math.min(goal.tracking.progress_pct, 100)}%`,
+                            backgroundColor: goal.tracking.overall_status === 'ahead' ? '#10b981'
+                              : goal.tracking.overall_status === 'on_track' ? '#3b82f6'
+                              : '#f59e0b',
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-blue-400 rounded-full transition-all duration-300"
-                        style={{ width: '0%' }}
-                      />
+                  )}
+                  {(!goal.tracking || goal.tracking.months_elapsed === 0) && (
+                    <div className="mb-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-400">Progress</span>
+                        <span className="text-xs font-medium text-gray-500">0% · tracking starts this month</span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full" />
                     </div>
-                  </div>
+                  )}
 
                   {/* Cutback summary */}
                   {cutbackCount > 0 && (
                     <p className="text-xs text-gray-400 mb-3">
                       {cutbackCount} spending cutback{cutbackCount !== 1 ? 's' : ''} planned
                       {' · '}₹{fmt(goal.total_monthly_cutback)}/mo committed
+                    </p>
+                  )}
+                  {goal.tracking && goal.tracking.projected_months_to_goal != null && (
+                    <p className="text-xs text-gray-400 mb-3">
+                      At current pace: goal in ~{Math.ceil(goal.tracking.projected_months_to_goal)} months
+                      {goal.tracking.projected_months_to_goal <= goal.goal_months ? ' ✓' : ' (behind schedule)'}
                     </p>
                   )}
 
@@ -387,7 +304,6 @@ const GoalsHubPage = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSaved={handleGoalSaved}
-        incomeOverride={incomeOverride}
       />
     </div>
   )

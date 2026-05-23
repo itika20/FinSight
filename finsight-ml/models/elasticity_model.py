@@ -51,15 +51,17 @@ np.random.seed(RANDOM_STATE)
 # How discretionary each category is (0 = essential, 1 = fully optional)
 # Drives the base reduction range in target simulation
 CATEGORY_TYPE = {
-    'food':          0.50,   # semi -- eating out is optional, groceries aren't
-    'groceries':     0.15,   # mostly essential
-    'transport':     0.40,   # semi -- some is commuting (essential), some isn't
-    'shopping':      0.90,   # highly discretionary
-    'entertainment': 1.00,   # fully discretionary
+    'food':          0.50,   # semi -- eating out is optional, home cooking isn't
+    'groceries':     0.20,   # mostly essential, some premium substitution possible
+    'transport':     0.40,   # semi -- commuting essential, Uber/cabs optional
+    'entertainment': 0.90,   # highly discretionary -- streaming, movies, events
+    'shopping':      0.95,   # highly discretionary -- e-commerce, retail
+    'trip':          1.00,   # fully discretionary -- holidays, hotel stays
+    'education':     0.30,   # semi -- self-improvement, but can be deferred
     'utilities':     0.10,   # essential
-    'healthcare':    0.05,   # essential -- never recommend cutting
+    'health':        0.05,   # essential -- never recommend cutting
     'investments':   0.30,   # semi -- can defer but harms long-term wealth
-    'fuel':          0.45,   # semi -- some commuting, some leisure driving
+    'rent':          0.00,   # non-negotiable fixed obligation
 }
 
 # Simulated average acceptance rate per category (used as ranker feature later)
@@ -67,20 +69,24 @@ CATEGORY_ACCEPTANCE_RATE = {
     'food':          0.45,
     'groceries':     0.30,
     'transport':     0.35,
-    'shopping':      0.60,
     'entertainment': 0.65,
+    'shopping':      0.70,
+    'trip':          0.60,
+    'education':     0.35,
     'utilities':     0.25,
-    'healthcare':    0.15,
+    'health':        0.15,
     'investments':   0.20,
-    'fuel':          0.40,
+    'rent':          0.05,
 }
 
 CATEGORIES = list(CATEGORY_TYPE.keys())
 
 CLUSTER_FEATURES = [
-    'monthly_income_estimate', 'food_pct', 'groceries_pct', 'transport_pct',
-    'shopping_pct', 'entertainment_pct', 'utilities_pct', 'healthcare_pct',
-    'investments_pct', 'fuel_pct', 'savings_rate', 'spend_volatility_normalised',
+    'monthly_income_estimate',
+    'food_pct', 'groceries_pct', 'transport_pct',
+    'entertainment_pct', 'shopping_pct', 'trip_pct', 'education_pct',
+    'utilities_pct', 'health_pct', 'investments_pct', 'rent_pct',
+    'savings_rate', 'spend_volatility_normalised',
 ]
 
 INCOME_BRACKET_BOUNDS = [

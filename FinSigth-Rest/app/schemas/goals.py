@@ -52,6 +52,7 @@ class GoalSaveRequest(BaseModel):
     cluster_label: Optional[str] = None
     decisions: dict[str, Any]          # {category: {status, amount}}
     total_monthly_cutback: float
+    baselines: dict[str, float] = {}   # {category: avg_monthly_spend at plan creation}
 
 
 # ─────────────────────────────────────────────
@@ -64,6 +65,13 @@ class CategoryCutback(BaseModel):
     recommended_monthly_spend: float
     monthly_saving: float                  # max saving available
     peer_avg_monthly_spend: float
+
+
+class CategoryDrift(BaseModel):
+    category: str
+    plan_baseline: float    # avg monthly spend stored at goal creation
+    current_avg: float      # avg monthly spend in last 3 months
+    drift_pct: float        # (current - baseline) / baseline * 100; positive = spending more
 
 
 # ─────────────────────────────────────────────
@@ -86,6 +94,25 @@ class GoalResponse(BaseModel):
     investment_insight: Optional[str] = None   # positive opportunity flag, not a cutback
 
 
+class MonthlyContribution(BaseModel):
+    month: str               # 'YYYY-MM'
+    net_surplus: float       # smoothed_salary - net_expenses (informational)
+    total_invested: float    # Investment debits this month (informational)
+    contribution: float      # plan-adherence: sum of min(max(0, baseline_cat - actual_cat), cutback) per category
+    target: float            # goal's required_monthly_saving
+    status: str              # 'ahead' | 'on_track' | 'behind'
+
+class GoalTracking(BaseModel):
+    monthly: list[MonthlyContribution]
+    cumulative_contribution: float
+    cumulative_target: float          # months_elapsed × required_monthly_saving
+    months_elapsed: int
+    progress_pct: float               # cumulative_contribution / goal_amount × 100, capped at 100
+    overall_status: str               # 'ahead' | 'on_track' | 'behind' | 'not_started'
+    avg_monthly_contribution: float
+    projected_months_to_goal: Optional[float]  # None if no contribution yet
+
+
 # ─────────────────────────────────────────────
 # Response: saved goal (with live status)
 # ─────────────────────────────────────────────
@@ -102,11 +129,23 @@ class SavedGoal(BaseModel):
     cluster_label: Optional[str]
     decisions: dict[str, Any]
     total_monthly_cutback: float
+    # Existing-savings fields:
+    accumulated_savings_at_creation: float = 0.0   # snapshot of Investments total at save time
+    count_existing_savings: bool = False            # user toggle: count saved pot toward goal
     created_at: str
+    baselines: dict[str, float] = {}               # avg monthly spend per category at creation
     # Computed at fetch time from live transactions:
     coverage_amount: float     # how much of required is covered by available saving
     coverage_percent: int      # 0-100
     status: str                # 'on_track' | 'at_risk' | 'off_track'
+    tracking: Optional['GoalTracking'] = None
+    spend_drift: list['CategoryDrift'] = []        # categories with ≥20% spend shift since creation
+    current_month: Optional[str] = None            # 'YYYY-MM' of the most recent data month
+    current_month_spend: dict[str, float] = {}     # actual spend per category in current_month
+
+
+class ToggleExistingSavingsRequest(BaseModel):
+    count_existing_savings: bool
 
 
 class SavedGoalListResponse(BaseModel):

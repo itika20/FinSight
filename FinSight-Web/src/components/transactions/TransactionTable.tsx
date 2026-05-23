@@ -69,19 +69,63 @@ const getConfidenceDisplay = (confidence?: string | null): ConfidenceDisplay =>
 const TransactionTable = () => {
   const { filteredTransactions: transactions, updateTransactionCategory } = useTransactions()
 
-  // Which row's dropdown is open
+  // ── Category column filter (Excel-style) ──────────────────────────────────
+  // excludedCategories: set of categories to HIDE. Empty = no filter (show all).
+  const [excludedCategories, setExcludedCategories] = useState<Set<string>>(new Set())
+  const [isFilterOpen, setIsFilterOpen]             = useState(false)
+  const filterRef                                   = useRef<HTMLDivElement>(null)
+
+  // Unique categories present in the current data, sorted by count desc
+  const categoryOptions: { cat: string; count: number }[] = (() => {
+    const counts: Record<string, number> = {}
+    for (const t of transactions) {
+      const cat = t.category || 'Uncategorised'
+      counts[cat] = (counts[cat] ?? 0) + 1
+    }
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, count]) => ({ cat, count }))
+  })()
+
+  const isFiltered = excludedCategories.size > 0
+
+  const displayTransactions = (isFiltered
+    ? transactions.filter(t => !excludedCategories.has(t.category || 'Uncategorised'))
+    : transactions
+  ).slice().sort((a, b) => a.date.localeCompare(b.date))
+
+  const toggleCategory = (cat: string) => {
+    setExcludedCategories(prev => {
+      const next = new Set(prev)
+      next.has(cat) ? next.delete(cat) : next.add(cat)
+      return next
+    })
+  }
+
+  // Select all = remove all exclusions (show everything)
+  const selectAll = () => setExcludedCategories(new Set())
+  // Clear all = exclude every category (show nothing)
+  const clearAll  = () => setExcludedCategories(new Set(categoryOptions.map(o => o.cat)))
+
+  // Close filter dropdown on outside click
+  useEffect(() => {
+    if (!isFilterOpen) return
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setIsFilterOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [isFilterOpen])
+
+  // ── Row category edit dropdown ─────────────────────────────────────────────
   const [editingId, setEditingId] = useState<string | null>(null)
-  // Which row is mid-save (shows spinner)
-  const [savingId, setSavingId] = useState<string | null>(null)
-  // Which row just saved (shows ✓ briefly)
-  const [savedId, setSavedId] = useState<string | null>(null)
-  // Which row has a save error (shows ✕ briefly)
-  const [errorId, setErrorId] = useState<string | null>(null)
+  const [savingId,  setSavingId]  = useState<string | null>(null)
+  const [savedId,   setSavedId]   = useState<string | null>(null)
+  const [errorId,   setErrorId]   = useState<string | null>(null)
+  const dropdownRef               = useRef<HTMLDivElement>(null)
 
-  // Ref attached to the open dropdown so we can detect outside clicks
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
-  // Close dropdown when user clicks outside it
   useEffect(() => {
     if (!editingId) return
     const handleOutside = (e: MouseEvent) => {
@@ -100,15 +144,12 @@ const TransactionTable = () => {
 
     try {
       await updateTransactionCategory(txnId, category)
-
-      // Flash "Saved ✓" for 2 seconds
       setSavedId(txnId)
       setTimeout(
         () => setSavedId(prev => (prev === txnId ? null : prev)),
         2000
       )
     } catch {
-      // Flash "Failed ✕" for 3 seconds
       setErrorId(txnId)
       setTimeout(
         () => setErrorId(prev => (prev === txnId ? null : prev)),
@@ -133,12 +174,17 @@ const TransactionTable = () => {
           </p>
         </div>
         <span className="shrink-0 text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full border border-gray-100">
-          {transactions.length} transactions
+          {isFiltered
+            ? `${displayTransactions.length} of ${transactions.length}`
+            : `${transactions.length} transactions`}
         </span>
       </div>
 
       {/* ── Table ── */}
-      <div className="overflow-x-auto">
+      {/* min-h ensures the container never collapses shorter than the filter dropdown.
+          overflow-x-auto implicitly sets overflow-y:auto which clips absolutely-positioned
+          children; without min-h the dropdown is invisible when tbody is empty. */}
+      <div className="overflow-x-auto min-h-[400px]">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100">
@@ -154,9 +200,84 @@ const TransactionTable = () => {
               <th className="text-center px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
                 Type
               </th>
+
+              {/* ── Category column header with filter ── */}
               <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                Category
+                <div className="relative inline-block" ref={filterRef}>
+                  <button
+                    onClick={() => setIsFilterOpen(o => !o)}
+                    className={`inline-flex items-center gap-1 transition-colors ${
+                      isFiltered ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                    title={isFiltered ? `${categoryOptions.length - excludedCategories.size} of ${categoryOptions.length} categories shown` : 'Filter by category'}
+                  >
+                    Category
+                    {/* Funnel icon — filled when filter is active */}
+                    {isFiltered ? (
+                      <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V17a1 1 0 01-1.447.894l-4-2A1 1 0 017 15V9.414L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+                      </svg>
+                    )}
+                  </button>
+
+                  {/* Filter dropdown */}
+                  {isFilterOpen && (
+                    <div className="absolute left-0 top-full mt-2 z-50 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 w-52">
+
+                      {/* Select all / Clear actions */}
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+                        <button
+                          onClick={selectAll}
+                          disabled={excludedCategories.size === 0}
+                          className="text-xs text-blue-600 hover:text-blue-700 disabled:text-gray-300 disabled:cursor-not-allowed font-medium transition-colors"
+                        >
+                          Select all
+                        </button>
+                        <span className="text-gray-200">|</span>
+                        <button
+                          onClick={clearAll}
+                          disabled={excludedCategories.size === categoryOptions.length}
+                          className="text-xs text-gray-500 hover:text-gray-700 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Clear all
+                        </button>
+                      </div>
+
+                      {/* Category checkboxes */}
+                      <div className="max-h-60 overflow-y-auto py-1">
+                        {categoryOptions.map(({ cat, count }) => {
+                          const checked = !excludedCategories.has(cat)
+                          return (
+                            <label
+                              key={cat}
+                              className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleCategory(cat)}
+                                className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 accent-blue-600 cursor-pointer"
+                              />
+                              <span
+                                className="w-2 h-2 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: getCategoryColor(cat) }}
+                              />
+                              <span className="flex-1 text-xs text-gray-700">{cat}</span>
+                              <span className="text-xs text-gray-400 tabular-nums">{count}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+
+                    </div>
+                  )}
+                </div>
               </th>
+
               <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">
                 Confidence
               </th>
@@ -164,7 +285,20 @@ const TransactionTable = () => {
           </thead>
 
           <tbody>
-            {transactions.map((txn, index) => {
+            {displayTransactions.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-5 py-16 text-center align-middle">
+                  <p className="text-sm text-gray-400 mb-2">No transactions match the selected categories.</p>
+                  <button
+                    onClick={() => setExcludedCategories(new Set())}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Clear filter
+                  </button>
+                </td>
+              </tr>
+            )}
+            {displayTransactions.map((txn, index) => {
               const isDebit    = txn.type === 'debit'
               const isSaving   = savingId === txn.transaction_id
               const isSaved    = savedId  === txn.transaction_id
@@ -187,10 +321,7 @@ const TransactionTable = () => {
 
                   {/* Description */}
                   <td className="px-5 py-3.5 max-w-xs">
-                    <p
-                      className="text-sm text-gray-700 truncate"
-                      title={txn.description}
-                    >
+                    <p className="text-sm text-gray-700 truncate" title={txn.description}>
                       {txn.description}
                     </p>
                   </td>
@@ -210,14 +341,12 @@ const TransactionTable = () => {
                   {/* Category — editable */}
                   <td className="px-5 py-3.5">
                     {isSaving ? (
-                      // Saving state — spinner
                       <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
                         <span className="w-3 h-3 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
                         Saving...
                       </span>
 
                     ) : isSaved ? (
-                      // Saved flash
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -226,7 +355,6 @@ const TransactionTable = () => {
                       </span>
 
                     ) : isError ? (
-                      // Error flash
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
@@ -235,12 +363,7 @@ const TransactionTable = () => {
                       </span>
 
                     ) : (
-                      // Normal state — coloured pill + dropdown
-                      <div
-                        className="relative inline-block"
-                        ref={isEditing ? dropdownRef : null}
-                      >
-                        {/* Category pill button */}
+                      <div className="relative inline-block" ref={isEditing ? dropdownRef : null}>
                         <button
                           onClick={() => setEditingId(isEditing ? null : txn.transaction_id)}
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-white transition-opacity hover:opacity-80 cursor-pointer select-none"
@@ -258,7 +381,6 @@ const TransactionTable = () => {
                           </svg>
                         </button>
 
-                        {/* Dropdown */}
                         {isEditing && (
                           <div className="absolute left-0 top-full mt-1.5 z-50 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[200px] max-h-64 overflow-y-auto">
                             <p className="px-3 pt-1 pb-2 text-xs text-gray-400 border-b border-gray-100 font-medium">

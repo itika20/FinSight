@@ -11,9 +11,9 @@
  * - avgMonthlySavings is always the overall average (not filtered per-month)
  */
 
-import { createContext, useState, useCallback, useMemo, type ReactNode } from 'react'
+import { createContext, useState, useCallback, useMemo, useEffect, type ReactNode } from 'react'
 import type { Transaction, DateRange, TransactionContextType, Upload } from '../models'
-import { getTransactionsApi, updateCategoryApi, getUploadsApi } from '../api/upload'
+import { getTransactionsApi, updateCategoryApi, getUploadsApi, getPreSalaryBalanceApi } from '../api/upload'
 
 export const TransactionContext = createContext<TransactionContextType | undefined>(undefined)
 
@@ -34,6 +34,10 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
   // ── Upload history state ────────────────────────────────────────
   const [uploads, setUploads] = useState<Upload[]>([])
 
+  // ── Pre-salary balance (fetched from backend when selectedMonth changes) ──
+  const [preSalaryBalance, setPreSalaryBalance] = useState<number | null>(null)
+  const [preSalaryAccounts, setPreSalaryAccounts] = useState<import('../models').AccountOpeningBalance[]>([])
+
   // ── Available months (derived from transactions, newest first) ──
   const availableMonths = useMemo(() => {
     const monthSet = new Set<string>()
@@ -43,22 +47,87 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
     return Array.from(monthSet).sort((a, b) => b.localeCompare(a))
   }, [transactions])
 
+  // ── Salary-based spending window ───────────────────────────────
+  // For each selected month, the "spending period" runs from the salary that
+  // funded this month (previous month's salary arriving on day >= 20) through
+  // to the day before the next salary arrives (current month day >= 20).
+  // Falls back to calendar month bounds when no anchoring salary exists.
+  const SALARY_SHIFT_DAY = 20
+  const salaryWindow = useMemo((): { start: string; end: string } | null => {
+    if (!selectedMonth) return null
+    const [y, m] = selectedMonth.split('-').map(Number)
+    const prevMonth = m === 1
+      ? `${y - 1}-12`
+      : `${y}-${String(m - 1).padStart(2, '0')}`
+
+    // Earliest late salary in previous month (day >= 20) → window start
+    const prevLateSalaries = transactions
+      .filter(t =>
+        t.category === 'Salary' && t.type === 'credit' &&
+        t.date.startsWith(prevMonth) &&
+        parseInt(t.date.slice(8, 10), 10) >= SALARY_SHIFT_DAY
+      )
+      .sort((a, b) => a.date.localeCompare(b.date))
+
+    // Earliest late salary in current month (day >= 20) → window end (day before)
+    const currLateSalaries = transactions
+      .filter(t =>
+        t.category === 'Salary' && t.type === 'credit' &&
+        t.date.startsWith(selectedMonth) &&
+        parseInt(t.date.slice(8, 10), 10) >= SALARY_SHIFT_DAY
+      )
+      .sort((a, b) => a.date.localeCompare(b.date))
+
+    const windowStart = prevLateSalaries.length > 0
+      ? prevLateSalaries[0].date
+      : `${selectedMonth}-01`
+
+    let windowEnd: string
+    if (currLateSalaries.length > 0) {
+      const d = new Date(currLateSalaries[0].date)
+      d.setDate(d.getDate() - 1)
+      windowEnd = d.toISOString().slice(0, 10)
+    } else {
+      // Last day of the selected calendar month
+      windowEnd = new Date(y, m, 0).toISOString().slice(0, 10)
+    }
+
+    return { start: windowStart, end: windowEnd }
+  }, [transactions, selectedMonth])
+
   // ── Month-filtered transaction slice ────────────────────────────
+  // Uses the salary window when available; falls back to calendar month.
   const filteredTransactions = useMemo(() => {
     if (!selectedMonth) return transactions
+    if (salaryWindow) {
+      return transactions.filter(t => t.date >= salaryWindow.start && t.date <= salaryWindow.end)
+    }
     return transactions.filter(t => t.date.startsWith(selectedMonth))
-  }, [transactions, selectedMonth])
+  }, [transactions, selectedMonth, salaryWindow])
 
   // ── Derived stats (from filtered slice) ────────────────────────
 
   const totalCount = filteredTransactions.length
 
-  const totalSpend = useMemo(
-    () => filteredTransactions
-      .filter(t => t.type === 'debit')
+  // Since filteredTransactions already spans the salary window (prev-month late
+  // salary → day before current-month late salary), totalIncome is simply the
+  // sum of all Salary credits within that window.
+  const totalIncome = useMemo(() =>
+    filteredTransactions
+      .filter(t => t.category === 'Salary' && t.type === 'credit')
       .reduce((sum, t) => sum + Math.abs(t.amount), 0),
     [filteredTransactions]
   )
+
+  const totalSpend = useMemo(() => {
+    const debits = filteredTransactions
+      .filter(t => t.type === 'debit' && t.category !== 'Transfers' && t.category !== 'Salary')
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
+    const reimbursements = filteredTransactions
+      .filter(t => t.type === 'credit' && t.category !== 'Salary' && t.category !== 'Transfers')
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
+    return Math.max(0, debits - reimbursements)
+  }, [filteredTransactions])
 
   const topCategory = useMemo(() => {
     const spendByCategory: Record<string, number> = {}
@@ -89,6 +158,24 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
 
   /** Number of completed uploads — used by DataSourcesStrip */
   const statementCount = uploads.length
+
+  // ── Fetch pre-salary balance whenever selected month changes ────
+  useEffect(() => {
+    if (!selectedMonth) {
+      setPreSalaryBalance(null)
+      setPreSalaryAccounts([])
+      return
+    }
+    getPreSalaryBalanceApi(selectedMonth)
+      .then(data => {
+        setPreSalaryBalance(data.total_opening_balance)
+        setPreSalaryAccounts(data.accounts)
+      })
+      .catch(() => {
+        setPreSalaryBalance(null)
+        setPreSalaryAccounts([])
+      })
+  }, [selectedMonth])
 
   // ── Load transactions from backend ─────────────────────────────
   const loadTransactions = useCallback(async () => {
@@ -162,6 +249,9 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
     filteredTransactions,
     totalCount,
     totalSpend,
+    totalIncome,
+    preSalaryBalance,
+    preSalaryAccounts,
     topCategory,
     avgMonthlySavings,
     dateRange,

@@ -19,6 +19,7 @@ from app.schemas.goals import (
     GoalResponse,
     GoalSaveRequest,
     SavedGoalListResponse,
+    ToggleExistingSavingsRequest,
 )
 from app.services import goal_service
 
@@ -95,6 +96,43 @@ def list_saved_goals(
     logger.info("[goals] GET /goals user=%s", user_id)
     with get_db() as conn:
         return goal_service.get_saved_goals(user_id, conn)
+
+
+@router.patch('/{goal_id}/existing-savings', response_model=dict)
+def toggle_existing_savings(
+    goal_id: str,
+    body: ToggleExistingSavingsRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Toggle whether the user's existing investment savings (accumulated before
+    this goal was created) count toward the goal's progress bar.
+    """
+    user_id = current_user['id']
+    logger.info(
+        "[goals] PATCH /goals/%s/existing-savings user=%s count=%s",
+        goal_id, user_id, body.count_existing_savings,
+    )
+    with get_db() as conn:
+        goal_service.toggle_existing_savings(user_id, goal_id, body.count_existing_savings, conn)
+    return {'message': 'Updated.'}
+
+
+@router.post('/{goal_id}/recalculate-savings', response_model=dict)
+def recalculate_savings(
+    goal_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Re-computes accumulated_savings_at_creation from the user's current
+    Investments transactions and persists the result.  Call this for goals
+    created before the accumulated_savings column was added (they default to 0).
+    """
+    user_id = current_user['id']
+    logger.info("[goals] POST /goals/%s/recalculate-savings user=%s", goal_id, user_id)
+    with get_db() as conn:
+        accumulated = goal_service.recalculate_savings(user_id, goal_id, conn)
+    return {'accumulated_savings_at_creation': accumulated, 'message': 'Savings recalculated.'}
 
 
 @router.delete('/{goal_id}', response_model=dict)

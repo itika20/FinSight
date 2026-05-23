@@ -4,11 +4,11 @@ Synthetic training data generator for FinSight savings goal model.
 Generates 5,000 synthetic Indian household spending profiles parameterised
 from NSSO Household Consumer Expenditure Survey distributions.
 
-Output: data/training_data.csv (5000 rows × 12 feature columns)
+Output: data/training_data.csv (5000 rows × 14 feature columns)
 
 Usage:
-    cd FinSigth-Rest
-    python scripts/generate_training_data.py
+    cd finsight-ml
+    python data/generate_synthetic.py
 """
 
 import numpy as np
@@ -38,56 +38,64 @@ INCOME_RANGES = {
 # ─────────────────────────────────────────────────────────────────────────────
 BASE_PROPORTIONS = {
     'low': {
-        # Food-heavy, low discretionary spend. NSSO: food+beverages ~45%
-        # split into food (eating out) and groceries (home cooking).
-        'food':          (0.35, 0.08),
-        'groceries':     (0.12, 0.03),
-        'transport':     (0.08, 0.02),
+        # NSSO: food+beverages ~45-50% for low-income urban households.
+        # Split: ~60% restaurants/delivery, ~40% supermarkets/grocery delivery.
+        'food':          (0.22, 0.06),  # restaurants, cafes, takeaway
+        'groceries':     (0.16, 0.05),  # supermarkets, grocery delivery
+        'transport':     (0.10, 0.03),  # includes fuel
         'utilities':     (0.15, 0.03),
-        'healthcare':    (0.07, 0.04),
-        'shopping':      (0.05, 0.02),
-        'entertainment': (0.02, 0.01),
+        'health':        (0.07, 0.04),
+        'entertainment': (0.03, 0.02),  # streaming, movies, events
+        'shopping':      (0.02, 0.01),  # e-commerce, retail
+        'trip':          (0.01, 0.01),  # hotels, holiday packages
+        'education':     (0.01, 0.01),  # courses, tuition
         'investments':   (0.01, 0.01),
-        'fuel':          (0.04, 0.02),
+        'rent':          (0.12, 0.04),  # includes EMI obligations
     },
     'medium': {
-        # Rising discretionary spend. Investments become meaningful.
-        # NSSO: food share drops to ~25%, shopping/entertainment rise.
-        'food':          (0.20, 0.06),
-        'groceries':     (0.12, 0.03),
-        'transport':     (0.10, 0.03),
+        # NSSO: food share ~25%, shopping/entertainment rise to ~13%.
+        # Split food: ~57% eating out, ~43% grocery. Entertainment split more evenly.
+        'food':          (0.16, 0.05),
+        'groceries':     (0.12, 0.04),
+        'transport':     (0.14, 0.03),
         'utilities':     (0.10, 0.03),
-        'healthcare':    (0.05, 0.03),
-        'shopping':      (0.10, 0.04),
+        'health':        (0.05, 0.03),
         'entertainment': (0.05, 0.02),
+        'shopping':      (0.04, 0.02),
+        'trip':          (0.02, 0.01),
+        'education':     (0.02, 0.01),
         'investments':   (0.08, 0.04),
-        'fuel':          (0.06, 0.02),
+        'rent':          (0.12, 0.03),
     },
     'high': {
-        # High discretionary spend. Shopping and investments dominate growth.
-        # NSSO upper-middle bracket: food ~18%, investments ~12%.
-        'food':          (0.15, 0.05),
-        'groceries':     (0.10, 0.03),
-        'transport':     (0.08, 0.02),
+        # NSSO upper-middle: food ~18%, investments ~12%, rent proportion falls.
+        # High discretionary — shopping and trips grow noticeably.
+        'food':          (0.13, 0.04),
+        'groceries':     (0.09, 0.03),
+        'transport':     (0.13, 0.03),
         'utilities':     (0.08, 0.02),
-        'healthcare':    (0.04, 0.02),
-        'shopping':      (0.15, 0.05),
-        'entertainment': (0.08, 0.03),
+        'health':        (0.04, 0.02),
+        'entertainment': (0.07, 0.03),
+        'shopping':      (0.07, 0.03),
+        'trip':          (0.04, 0.02),
+        'education':     (0.03, 0.02),
         'investments':   (0.12, 0.05),
-        'fuel':          (0.07, 0.02),
+        'rent':          (0.10, 0.03),
     },
     'premium': {
-        # Investment-heavy. Shopping and entertainment elevated.
-        # Food share falls to ~10%. Savings capacity significantly higher.
-        'food':          (0.10, 0.04),
-        'groceries':     (0.08, 0.02),
-        'transport':     (0.06, 0.02),
+        # Investment-heavy. Shopping + trips highly elevated.
+        # Food share ~16% total (eating out dominant).
+        'food':          (0.10, 0.03),
+        'groceries':     (0.06, 0.02),
+        'transport':     (0.10, 0.02),
         'utilities':     (0.06, 0.02),
-        'healthcare':    (0.03, 0.02),
-        'shopping':      (0.18, 0.06),
-        'entertainment': (0.12, 0.04),
+        'health':        (0.03, 0.02),
+        'entertainment': (0.08, 0.03),
+        'shopping':      (0.08, 0.03),
+        'trip':          (0.07, 0.03),
+        'education':     (0.05, 0.02),
         'investments':   (0.20, 0.07),
-        'fuel':          (0.05, 0.02),
+        'rent':          (0.08, 0.02),
     },
 }
 
@@ -106,10 +114,12 @@ def generate_synthetic_user(income_bracket: str) -> dict:
     """
     Generates one synthetic user's monthly spending profile.
 
-    Returns a dict with 12 features:
-        monthly_income_estimate, food_pct, groceries_pct, transport_pct,
-        shopping_pct, entertainment_pct, utilities_pct, healthcare_pct,
-        investments_pct, fuel_pct, savings_rate, spend_volatility_normalised
+    Returns a dict with 14 features:
+        monthly_income_estimate,
+        food_pct, groceries_pct, transport_pct,
+        entertainment_pct, shopping_pct, trip_pct, education_pct,
+        utilities_pct, health_pct, investments_pct, rent_pct,
+        savings_rate, spend_volatility_normalised
     """
     low, high = INCOME_RANGES[income_bracket]
     income = np.random.uniform(low, high)
@@ -140,17 +150,19 @@ def generate_synthetic_user(income_bracket: str) -> dict:
     )
 
     return {
-        'monthly_income_estimate':    round(income, 2),
-        'food_pct':                   round(spending_pct['food'], 4),
-        'groceries_pct':              round(spending_pct['groceries'], 4),
-        'transport_pct':              round(spending_pct['transport'], 4),
-        'shopping_pct':               round(spending_pct['shopping'], 4),
-        'entertainment_pct':          round(spending_pct['entertainment'], 4),
-        'utilities_pct':              round(spending_pct['utilities'], 4),
-        'healthcare_pct':             round(spending_pct['healthcare'], 4),
-        'investments_pct':            round(spending_pct['investments'], 4),
-        'fuel_pct':                   round(spending_pct['fuel'], 4),
-        'savings_rate':               round(savings_rate, 4),
+        'monthly_income_estimate':     round(income, 2),
+        'food_pct':                    round(spending_pct['food'], 4),
+        'groceries_pct':               round(spending_pct['groceries'], 4),
+        'transport_pct':               round(spending_pct['transport'], 4),
+        'entertainment_pct':           round(spending_pct['entertainment'], 4),
+        'shopping_pct':                round(spending_pct['shopping'], 4),
+        'trip_pct':                    round(spending_pct['trip'], 4),
+        'education_pct':               round(spending_pct['education'], 4),
+        'utilities_pct':               round(spending_pct['utilities'], 4),
+        'health_pct':                  round(spending_pct['health'], 4),
+        'investments_pct':             round(spending_pct['investments'], 4),
+        'rent_pct':                    round(spending_pct['rent'], 4),
+        'savings_rate':                round(savings_rate, 4),
         'spend_volatility_normalised': round(spend_volatility_normalised, 4),
     }
 

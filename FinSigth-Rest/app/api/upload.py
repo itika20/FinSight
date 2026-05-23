@@ -30,6 +30,7 @@ from app.schemas.upload import (
     CategoryUpdateRequest, CategoryUpdateResponse, TransactionListResponse,
     UploadResponse, ParsedTransaction, UploadListResponse, DeleteUploadResponse,
     NormalizeMerchantsRequest, NormalizeMerchantsResponse,
+    OpeningBalanceResponse, AccountOpeningBalance,
 )
 from openai import OpenAI
 from app.services.parsing_service import validate_file, parse_statement
@@ -43,6 +44,8 @@ from app.services.upload_service import (
     bulk_update_categories,
     list_uploads,
     delete_upload,
+    get_opening_balances,
+    get_pre_salary_balance,
 )
 from app.services.categorise import (
     categorise_transaction,
@@ -439,14 +442,17 @@ def update_category(
 
     if vpa:
         logger.debug(f"VPA extracted: {vpa}, saving to memory...")
-        save_vpa_memory(
-            user_id=user_id,
-            vpa=vpa,
-            category=body.category,
-            merchant_hint=body.merchant_hint
-        )
-        vpa_saved = True
-        logger.info(f"VPA memory saved: {vpa} → {body.category}")
+        try:
+            save_vpa_memory(
+                user_id=user_id,
+                vpa=vpa,
+                category=body.category,
+                merchant_hint=body.merchant_hint
+            )
+            vpa_saved = True
+            logger.info(f"VPA memory saved: {vpa} → {body.category}")
+        except Exception as e:
+            logger.warning(f"VPA memory save failed (non-fatal): {e}")
     else:
         logger.debug(f"No VPA found in description: {row['description']}")
 
@@ -584,7 +590,106 @@ def get_uploads(current_user=Depends(get_current_user)):
 
 
 # ============================================================================
-# ENDPOINT 6: Delete Upload (transactions only, VPA memory preserved)
+# ENDPOINT 6: Opening Balance for a given month
+# ============================================================================
+
+@router.get("/opening-balance", response_model=OpeningBalanceResponse)
+def get_opening_balance(
+    month: str,                            # query param: 'YYYY-MM'
+    current_user=Depends(get_current_user)
+):
+    """
+    Returns the opening balance (balance at the START of the month, before any
+    transactions) summed across all uploaded accounts that have data in that month.
+
+    For each account:
+    - Primary:  balance of the last transaction BEFORE the month (most accurate).
+    - Fallback: back-calculate from the first transaction of the month when no
+                prior-month data exists (e.g. first ever upload).
+
+    Returns total_opening_balance = None when no balance data is available
+    (e.g. the statement PDF had no running-balance column).
+    """
+    import re as _re
+    if not _re.match(r'^\d{4}-\d{2}$', month):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="month must be in YYYY-MM format (e.g. 2024-09)."
+        )
+
+    user_id = str(current_user['id'])
+    with get_db() as conn:
+        accounts = get_opening_balances(conn, user_id, month)
+
+    account_items = [
+        AccountOpeningBalance(
+            upload_id=a['upload_id'],
+            filename=a['filename'],
+            opening_balance=a['opening_balance'],
+        )
+        for a in accounts
+    ]
+    total = sum(a.opening_balance for a in account_items) if account_items else None
+    return OpeningBalanceResponse(
+        month=month,
+        total_opening_balance=total,
+        accounts=account_items,
+    )
+
+
+# ============================================================================
+# ENDPOINT 7: Pre-salary balance — balance across accounts before this month's
+#             salary arrived (used for the "Pre-Salary Savings" dashboard card)
+# ============================================================================
+
+@router.get("/pre-salary-balance", response_model=OpeningBalanceResponse)
+def get_pre_salary_balance_endpoint(
+    month: str,
+    current_user=Depends(get_current_user)
+):
+    """
+    Returns the balance across all accounts just BEFORE this period's salary arrived.
+
+    For each account:
+    - Primary:    reads the balance column of the earliest Salary credit in the
+                  previous month (day >= 20) and subtracts the salary amount to get
+                  the pre-salary balance.
+    - Fallback A: explicit 'Opening Balance' / 'Balance B/F' row in the current month.
+    - Fallback B: back-calculate from the first real transaction of the current month.
+
+    Accounts that received no late-month salary last month (e.g. a secondary account)
+    fall through to fallbacks, which return the calendar-month opening — correct because
+    no salary was deposited there, so April-1 IS the pre-salary balance for that account.
+    """
+    import re as _re
+    if not _re.match(r'^\d{4}-\d{2}$', month):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="month must be in YYYY-MM format (e.g. 2026-04)."
+        )
+
+    user_id = str(current_user['id'])
+    with get_db() as conn:
+        accounts = get_pre_salary_balance(conn, user_id, month)
+
+    account_items = [
+        AccountOpeningBalance(
+            upload_id=a['upload_id'],
+            filename=a['filename'],
+            opening_balance=a['opening_balance'],
+        )
+        for a in accounts
+    ]
+    total = sum(a.opening_balance for a in account_items) if account_items else None
+    return OpeningBalanceResponse(
+        month=month,
+        total_opening_balance=total,
+        accounts=account_items,
+    )
+
+
+# ============================================================================
+# ENDPOINT 8: Delete Upload (transactions only, VPA memory preserved)
 # ============================================================================
 
 @router.delete("/uploads/{upload_id}", response_model=DeleteUploadResponse)
@@ -633,48 +738,47 @@ async def normalize_merchants(
     if not body.descriptions:
         return NormalizeMerchantsResponse(normalized={})
 
-    # TODO: OpenAI call commented out to avoid charges — uncomment when ready
-    # logger.info(f"Normalizing {len(body.descriptions)} merchant descriptions")
-    #
-    # prompt = (
-    #     "You are a financial data processor specialising in Indian bank transactions.\n"
-    #     "Given the following raw transaction description strings (from bank statements), "
-    #     "return a JSON object that maps each description exactly to a clean merchant or brand name.\n\n"
-    #     "Rules:\n"
-    #     "- Use the well-known brand name when recognizable (e.g. 'Zomato', 'Amazon', 'Netflix').\n"
-    #     "- For UPI transfers to individuals (e.g. 'UPI/johndoe@okaxis'), return 'UPI Transfer'.\n"
-    #     "- For bank/NEFT/IMPS/RTGS transfers with no clear merchant, return 'Bank Transfer'.\n"
-    #     "- For ATM withdrawals, return 'ATM Withdrawal'.\n"
-    #     "- For unrecognizable entries, return a short clean label (max 25 characters).\n"
-    #     "- Every input description must appear as a key in the output JSON.\n"
-    #     "- Return only valid JSON — no markdown, no explanation.\n\n"
-    #     f"Descriptions:\n{json.dumps(body.descriptions, ensure_ascii=False)}"
-    # )
-    #
-    # try:
-    #     client = OpenAI(api_key=settings.OPENAI_API_KEY)
-    #     response = client.chat.completions.create(
-    #         model="gpt-4o-mini",
-    #         messages=[{"role": "user", "content": prompt}],
-    #         response_format={"type": "json_object"},
-    #         temperature=0,
-    #     )
-    #     raw = response.choices[0].message.content or "{}"
-    #     normalized: dict[str, str] = json.loads(raw)
-    #
-    #     # Ensure every requested description has an entry (fallback to truncated raw)
-    #     for desc in body.descriptions:
-    #         if desc not in normalized:
-    #             normalized[desc] = desc[:28] + "…" if len(desc) > 28 else desc
-    #
-    #     logger.info(f"Normalized {len(normalized)} descriptions successfully")
-    #     return NormalizeMerchantsResponse(normalized=normalized)
-    #
-    # except Exception as e:
-    #     logger.error(f"Merchant normalization failed: {e}")
-    #     fallback = {d: (d[:28] + "…" if len(d) > 28 else d) for d in body.descriptions}
-    #     return NormalizeMerchantsResponse(normalized=fallback)
+    logger.info(f"Normalizing {len(body.descriptions)} merchant descriptions")
 
-    # Temporary passthrough — returns descriptions as-is until OpenAI is re-enabled
-    passthrough = {d: (d[:28] + "…" if len(d) > 28 else d) for d in body.descriptions}
-    return NormalizeMerchantsResponse(normalized=passthrough)
+    prompt = (
+        "You are a financial data processor specialising in Indian bank transactions.\n"
+        "Given the following raw transaction description strings (from bank statements), "
+        "return a JSON object that maps each description exactly to a clean merchant or brand name.\n\n"
+        "Rules:\n"
+        "- Use the well-known brand name when recognizable (e.g. 'Zomato', 'Amazon', 'Netflix').\n"
+        "- For UPI transfers to individuals (e.g. 'UPI/johndoe@okaxis'), return 'UPI Transfer'.\n"
+        "- For bank/NEFT/IMPS/RTGS transfers with no clear merchant, return 'Bank Transfer'.\n"
+        "- For ATM withdrawals, return 'ATM Withdrawal'.\n"
+        "- For unrecognizable entries, return a short clean label (max 25 characters).\n"
+        "- Every input description must appear as a key in the output JSON.\n"
+        "- Return only valid JSON — no markdown, no explanation.\n\n"
+        f"Descriptions:\n{json.dumps(body.descriptions, ensure_ascii=False)}"
+    )
+
+    try:
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0,
+        )
+        raw = response.choices[0].message.content or "{}"
+        normalized: dict[str, str] = json.loads(raw)
+
+        # Ensure every requested description has an entry (fallback to truncated raw)
+        for desc in body.descriptions:
+            if desc not in normalized:
+                normalized[desc] = desc[:28] + "…" if len(desc) > 28 else desc
+
+        logger.info(f"Normalized {len(normalized)} descriptions successfully")
+        return NormalizeMerchantsResponse(normalized=normalized)
+
+    except Exception as e:
+        logger.error(f"Merchant normalization failed: {e}")
+        fallback = {d: (d[:28] + "…" if len(d) > 28 else d) for d in body.descriptions}
+        return NormalizeMerchantsResponse(normalized=fallback)
+
+    # Temporary passthrough (disabled) — uncomment to bypass OpenAI during testing
+    # passthrough = {d: (d[:28] + "…" if len(d) > 28 else d) for d in body.descriptions}
+    # return NormalizeMerchantsResponse(normalized=passthrough)

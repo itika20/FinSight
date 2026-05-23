@@ -59,3 +59,13 @@ class NormalizeMerchantsRequest(BaseModel):
 
 class NormalizeMerchantsResponse(BaseModel):
     normalized: dict[str, str]   # raw description → clean merchant name
+
+class AccountOpeningBalance(BaseModel):
+    upload_id: str
+    filename: str
+    opening_balance: float
+
+class OpeningBalanceResponse(BaseModel):
+    month: str                                    # 'YYYY-MM'
+    total_opening_balance: Optional[float]        # None if no balance data in any account
+    accounts: list[AccountOpeningBalance]

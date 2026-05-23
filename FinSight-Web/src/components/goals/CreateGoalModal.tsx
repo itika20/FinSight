@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getGoalPlanApi, saveGoalApi } from '../../api/goals'
+import { getTransactionsApi, updateCategoryApi } from '../../api/upload'
 import RecommendationCard from './RecommendationCard'
 import PlanHealthBar from './PlanHealthBar'
 import { GOAL_MODAL } from '../../constants/config'
@@ -18,6 +19,7 @@ import type {
   RecommendationDecision,
   SavedGoal,
 } from '../../models/goals'
+import type { Transaction } from '../../models'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 0 })
@@ -43,11 +45,6 @@ interface CreateGoalModalProps {
   onClose: () => void
   /** Called after a goal is successfully saved — parent should refresh list. */
   onSaved: () => void
-  /**
-   * Income override set at the Goals Hub level — applies to all calculations.
-   * The modal has no income editor; income is managed by the parent page.
-   */
-  incomeOverride?: number
   /** Pre-fill for "Adjust this plan" flow from GoalDetailPage. */
   initialGoal?: SavedGoal
 }
@@ -59,7 +56,6 @@ const CreateGoalModal = ({
   isOpen,
   onClose,
   onSaved,
-  incomeOverride,
   initialGoal,
 }: CreateGoalModalProps) => {
   // ── Phase A state ────────────────────────────────────────────
@@ -83,6 +79,12 @@ const CreateGoalModal = ({
   const [adjustMonths,       setAdjustMonths]       = useState(12)
   const [isRecalculating,    setIsRecalculating]    = useState(false)
   const [recalcError,        setRecalcError]        = useState<string | null>(null)
+
+  // ── No-salary recovery state ────────────────────────────
+  const [showSalarySetup,   setShowSalarySetup]   = useState(false)
+  const [salaryTxList,      setSalaryTxList]      = useState<Transaction[]>([])
+  const [isLoadingSalaryTx, setIsLoadingSalaryTx] = useState(false)
+  const [taggingId,         setTaggingId]         = useState<string | null>(null)
 
   const modalRef = useRef<HTMLDivElement>(null)
 
@@ -108,6 +110,9 @@ const CreateGoalModal = ({
       setDecisions({})
       setShowAllCards(false)
       setSaveError(null)
+      setShowSalarySetup(false)
+      setSalaryTxList([])
+      setTaggingId(null)
     }
   }, [isOpen, initialGoal])
 
@@ -170,9 +175,8 @@ const CreateGoalModal = ({
     const amount = parseAmount(amountDisplay)
     try {
       const result = await getGoalPlanApi({
-        goal_amount:  amount,
-        goal_months:  months,
-        ...(incomeOverride !== undefined ? { income_override: incomeOverride } : {}),
+        goal_amount: amount,
+        goal_months: months,
       })
       console.log('[CreateGoalModal] API response: cluster=%d recs=%d', result.cluster_id, result.recommendations.length)
       setGoalData(result)
@@ -188,11 +192,33 @@ const CreateGoalModal = ({
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { detail?: unknown } } }
       const detail = anyErr?.response?.data?.detail
-      setApiError(
-        typeof detail === 'string'
-          ? detail
-          : 'Could not generate recommendations. Upload at least 2 months of statements and try again.'
-      )
+      const detailStr = typeof detail === 'string' ? detail : ''
+
+      if (detailStr.includes("no transactions are tagged as 'Salary'")) {
+        // Income-unknown: show inline salary-tagging recovery UI
+        setShowSalarySetup(true)
+        setIsLoadingSalaryTx(true)
+        try {
+          const { transactions } = await getTransactionsApi(undefined, undefined, 'credit')
+          const topCredits = transactions
+            .filter(t => t.category !== 'Salary')
+            .sort((a, b) => b.amount - a.amount)
+            .slice(0, 8)
+          setSalaryTxList(topCredits)
+        } catch {
+          setSalaryTxList([])
+        } finally {
+          setIsLoadingSalaryTx(false)
+        }
+      } else {
+        setApiError(
+          detailStr
+            ? detailStr
+            : Array.isArray(detail) && detail[0]?.msg
+              ? detail[0].msg
+              : 'Could not generate recommendations. Please try again.'
+        )
+      }
     } finally {
       setIsLoading(false)
     }
@@ -207,9 +233,8 @@ const CreateGoalModal = ({
     setIsAdjusting(false)
     try {
       const result = await getGoalPlanApi({
-        goal_amount:  newAmount,
-        goal_months:  adjustMonths,
-        ...(incomeOverride !== undefined ? { income_override: incomeOverride } : {}),
+        goal_amount: newAmount,
+        goal_months: adjustMonths,
       })
       // Sync Phase A state so save payload stays consistent
       setAmountDisplay(adjustAmountDisplay)
@@ -233,6 +258,22 @@ const CreateGoalModal = ({
     setAdjustAmountDisplay(amountDisplay)
     setAdjustMonths(months)
     setIsAdjusting(true)
+  }
+
+  // ─── Tag a transaction as Salary, then retry the plan ────────
+  const handleTagAsSalary = async (txId: string) => {
+    setTaggingId(txId)
+    try {
+      await updateCategoryApi(txId, 'Salary')
+      // Dismiss salary setup and retry plan generation
+      setShowSalarySetup(false)
+      setSalaryTxList([])
+      await handleShowPlan()
+    } catch {
+      // Tag failed — leave UI open so user can try another transaction
+    } finally {
+      setTaggingId(null)
+    }
   }
 
   // ─── Decision change ──────────────────────────────────────────
@@ -259,18 +300,22 @@ const CreateGoalModal = ({
     const totalCutback = Object.values(decisions)
       .filter(d => d.status !== 'skipped')
       .reduce((sum, d) => sum + d.amount, 0)
+    const baselines: Record<string, number> = {}
+    goalData.recommendations.forEach(r => {
+      baselines[r.category] = r.current_monthly_spend
+    })
     try {
       await saveGoalApi({
         goal_name:                name.trim(),
         goal_amount:              parseAmount(amountDisplay),
         goal_months:              months,
         required_monthly_saving:  goalData.required_monthly_saving,
-        monthly_income_used:      incomeOverride ?? goalData.monthly_income_estimate,
-        income_override:          incomeOverride,
+        monthly_income_used:      goalData.monthly_income_estimate,
         cluster_id:               goalData.cluster_id,
         cluster_label:            goalData.cluster_label,
         decisions,
         total_monthly_cutback:    totalCutback,
+        baselines,
       })
       console.log('[CreateGoalModal] Goal saved successfully')
       onSaved()
@@ -420,8 +465,65 @@ const CreateGoalModal = ({
                   </div>
                 )}
 
-                {/* API error */}
-                {apiError && (
+                {/* Salary-tagging recovery (income unknown) */}
+                {showSalarySetup && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-amber-800">FinSight can't find your salary</p>
+                        <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                          Tag your salary credit below — FinSight will re-generate your plan immediately.
+                        </p>
+                      </div>
+                    </div>
+
+                    {isLoadingSalaryTx ? (
+                      <div className="flex items-center justify-center gap-2 py-3">
+                        <svg className="w-4 h-4 animate-spin text-amber-500" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <p className="text-xs text-amber-600">Loading your credit transactions…</p>
+                      </div>
+                    ) : salaryTxList.length === 0 ? (
+                      <p className="text-xs text-amber-700 text-center py-2">
+                        No credit transactions found. Please upload a bank statement first.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {salaryTxList.map(tx => (
+                          <div
+                            key={tx.transaction_id}
+                            className="flex items-center justify-between bg-white border border-amber-100 rounded-lg px-3 py-2"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-gray-800 truncate">{tx.description}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {tx.date} · ₹{tx.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleTagAsSalary(tx.transaction_id)}
+                              disabled={taggingId !== null}
+                              className="ml-3 flex-shrink-0 text-xs font-semibold bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              {taggingId === tx.transaction_id ? '…' : 'Tag as Salary'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* API error (non-salary errors) */}
+                {apiError && !showSalarySetup && (
                   <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
                     <p className="text-sm text-red-700 font-medium">Could not generate recommendations</p>
                     <p className="text-xs text-red-500 mt-1">{apiError}</p>
