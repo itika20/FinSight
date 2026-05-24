@@ -82,17 +82,33 @@ export function filterByRange(transactions: Transaction[], from: Date, to: Date)
 
 // ─── Aggregation helpers ──────────────────────────────────────────────────────
 
+// Categories excluded from spend charts — they are income or pass-throughs, not expenses.
+const EXCLUDED_SPEND_CATS = new Set(['Salary', 'Transfers'])
+
 export function getCategoryTotals(transactions: Transaction[]): CategoryTotal[] {
-  const totals: Record<string, number> = {}
+  // Net spend per category = debits − credits, floored at 0.
+  // e.g. Rent with ₹25,000 debit and ₹5,000 flatmate-reimbursement credit → ₹20,000 net.
+  const debits:  Record<string, number> = {}
+  const credits: Record<string, number> = {}
+
   for (const t of transactions) {
-    if (t.type !== 'debit') continue
     const cat = t.category || 'Uncategorised'
-    totals[cat] = (totals[cat] ?? 0) + Math.abs(t.amount)
+    if (EXCLUDED_SPEND_CATS.has(cat)) continue
+    if (t.type === 'debit')  debits[cat]  = (debits[cat]  ?? 0) + Math.abs(t.amount)
+    else                     credits[cat] = (credits[cat] ?? 0) + Math.abs(t.amount)
   }
-  const grand = Object.values(totals).reduce((s, v) => s + v, 0)
-  return Object.entries(totals)
-    .sort((a, b) => b[1] - a[1])
-    .map(([category, amount]) => ({
+
+  // Only include categories that have at least some debit activity
+  const entries: { category: string; amount: number }[] = []
+  for (const cat of Object.keys(debits)) {
+    const net = Math.max(0, (debits[cat] ?? 0) - (credits[cat] ?? 0))
+    if (net > 0) entries.push({ category: cat, amount: net })
+  }
+
+  const grand = entries.reduce((s, e) => s + e.amount, 0)
+  return entries
+    .sort((a, b) => b.amount - a.amount)
+    .map(({ category, amount }) => ({
       category,
       amount: Math.round(amount),
       percentage: grand > 0 ? (amount / grand) * 100 : 0,
@@ -100,37 +116,61 @@ export function getCategoryTotals(transactions: Transaction[]): CategoryTotal[] 
     }))
 }
 
-export function getMonthlyTotals(transactions: Transaction[]): MonthlyTotal[] {
-  const map: Record<string, { debit: number; credit: number }> = {}
-  for (const t of transactions) {
-    const m = t.date.slice(0, 7)
-    if (!map[m]) map[m] = { debit: 0, credit: 0 }
-    if (t.type === 'debit')  map[m].debit  += Math.abs(t.amount)
-    else                     map[m].credit += Math.abs(t.amount)
-  }
-  return Object.entries(map)
+/**
+ * Build monthly totals from a pre-sliced map of salary-window transactions.
+ * Each key is 'YYYY-MM'; the value is the same transaction set the dashboard
+ * shows when that month tab is selected (salary-window-adjusted, CC by billing_month).
+ * This guarantees the trend chart bars match the dashboard stat cards exactly.
+ */
+export function getMonthlyTotals(transactionsByMonth: Record<string, Transaction[]>): MonthlyTotal[] {
+  return Object.entries(transactionsByMonth)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, v]) => ({
-      month,
-      label: new Date(month + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
-      debit:  Math.round(v.debit),
-      credit: Math.round(v.credit),
-    }))
+    .map(([month, txns]) => {
+      let debitGross = 0, creditOffset = 0, income = 0
+      for (const t of txns) {
+        if (t.category === 'Salary' && t.type === 'credit') {
+          income += Math.abs(t.amount)
+        } else if (t.category === 'Transfers') {
+          // pass-through — excluded from both spend and income
+        } else if (t.type === 'debit') {
+          debitGross  += Math.abs(t.amount)
+        } else {
+          // non-salary credit in an expense category (reimbursement, refund)
+          creditOffset += Math.abs(t.amount)
+        }
+      }
+      return {
+        month,
+        label: new Date(month + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
+        debit:  Math.round(Math.max(0, debitGross - creditOffset)),
+        credit: Math.round(income),
+      }
+    })
 }
 
 export function getDailyTotals(transactions: Transaction[]): DailyTotal[] {
-  const map: Record<string, number> = {}
+  // Net spend per day — same netting as getCategoryTotals.
+  const debits:  Record<string, number> = {}
+  const credits: Record<string, number> = {}
+
   for (const t of transactions) {
-    if (t.type !== 'debit') continue
-    map[t.date] = (map[t.date] ?? 0) + Math.abs(t.amount)
+    if (EXCLUDED_SPEND_CATS.has(t.category ?? '')) continue
+    if (t.type === 'debit')  debits[t.date]  = (debits[t.date]  ?? 0) + Math.abs(t.amount)
+    else                     credits[t.date] = (credits[t.date] ?? 0) + Math.abs(t.amount)
   }
-  return Object.entries(map)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, amount]) => ({
-      date,
-      label: new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-      amount: Math.round(amount),
-    }))
+
+  const allDates = new Set([...Object.keys(debits)])
+  return Array.from(allDates)
+    .sort()
+    .map(date => {
+      const net = Math.max(0, (debits[date] ?? 0) - (credits[date] ?? 0))
+      return {
+        date,
+        label: new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        amount: Math.round(net),
+      }
+    })
+    .filter(d => d.amount > 0)
 }
 
 /**

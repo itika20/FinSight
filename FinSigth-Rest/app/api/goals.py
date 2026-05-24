@@ -99,6 +99,23 @@ def list_saved_goals(
         return goal_service.get_saved_goals(user_id, conn)
 
 
+@router.put('/{goal_id}', response_model=dict)
+def update_goal_plan(
+    goal_id: str,
+    body: GoalSaveRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Update an existing goal's plan fields in-place.
+    Tagged investments, existing-savings toggle, and creation date are preserved.
+    """
+    user_id = current_user['id']
+    logger.info("[goals] PUT /goals/%s user=%s name=%s", goal_id, user_id, body.goal_name)
+    with get_db() as conn:
+        goal_service.update_goal_plan(user_id, goal_id, body, conn)
+    return {'id': goal_id, 'message': 'Goal updated successfully.'}
+
+
 @router.patch('/{goal_id}/existing-savings', response_model=dict)
 def toggle_existing_savings(
     goal_id: str,

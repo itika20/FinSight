@@ -21,10 +21,12 @@ from app.core.config import settings
 from app.core.constants import (
     LOGGER_UPLOAD,
     VALID_TRANSACTION_CATEGORIES,
+    VALID_STATEMENT_TYPES,
+    ACCOUNT_TYPE_CREDIT_CARD,
     ERROR_INVALID_CATEGORY,
     ERROR_TRANSACTION_NOT_FOUND,
 )
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status
 from app.api.auth import get_current_user
 from app.schemas.upload import (
     CategoryUpdateRequest, CategoryUpdateResponse, TransactionListResponse,
@@ -66,6 +68,8 @@ router = APIRouter(prefix="/upload", tags=["upload"])
 @router.post("/statement", response_model=UploadResponse)
 async def upload_statement(
     file: UploadFile = File(...),
+    statement_type: str = Form(default='bank'),
+    billing_month: Optional[str] = Form(default=None),
     current_user=Depends(get_current_user)
 ):
     """
@@ -141,7 +145,21 @@ async def upload_statement(
         }
     """
     user_id = str(current_user['id'])
-    logger.info(f"Upload started: user={user_id}, file={file.filename}")
+    logger.info(f"Upload started: user={user_id}, file={file.filename}, statement_type={statement_type}")
+
+    # Validate statement_type
+    if statement_type not in VALID_STATEMENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"statement_type must be one of: {', '.join(VALID_STATEMENT_TYPES)}"
+        )
+
+    # CC statement requires billing_month
+    if statement_type == ACCOUNT_TYPE_CREDIT_CARD and not billing_month:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="billing_month (YYYY-MM) is required for credit card statements."
+        )
 
     # Read file into memory (never persists to disk)
     file_bytes = await file.read()
@@ -149,7 +167,6 @@ async def upload_statement(
     logger.debug(f"File read into memory: {file_size} bytes")
 
     # Validate file type and size (raises HTTPException if invalid)
-    # This is second validation — frontend did first, but validate here for security
     file_type = validate_file(
         filename=file.filename,
         content_type=file.content_type,
@@ -157,34 +174,30 @@ async def upload_statement(
     )
     logger.debug(f"File validation passed: type={file_type}")
 
-    # Open single database connection for entire operation
-    # This ensures atomicity: all transactions stored or none (rollback on error)
+    # account_type mirrors statement_type for denormalized storage on transactions
+    account_type = statement_type
+
     with get_db() as conn:
         logger.debug(f"Database connection opened for upload")
 
         # STEP 1: Create upload record
-        # This tracks the upload metadata and marks status as PROCESSING
-        # upload_id links all transactions from this batch
         upload_id = create_upload_record(
             conn,
             user_id=user_id,
             filename=file.filename,
-            file_type=file_type
+            file_type=file_type,
+            statement_type=statement_type,
+            billing_month=billing_month,
         )
         logger.info(f"Upload record created: id={upload_id}")
 
         try:
-            # STEP 2: Parse PDF file
-            # Extracts text, chunks by 3 pages, calls GPT-4o for each chunk
-            # GPT-4o returns structured transaction data
-            # Takes 15-30 seconds (API latency)
+            # STEP 2: Parse PDF file (bank or CC prompt)
             logger.debug(f"Starting PDF parsing for {file_size} bytes...")
-            transactions, skipped_count = parse_statement(file_bytes, file_type)
+            transactions, skipped_count = parse_statement(file_bytes, file_type, statement_type)
             logger.info(f"PDF parsed: {len(transactions)} transactions, {skipped_count} skipped")
 
             # STEP 3: Run ML categorisation on each transaction
-            # extract_vpa() finds merchant VPA patterns
-            # categorise_transaction() uses VPA memory + GPT to apply category
             logger.debug(f"Starting categorisation for {len(transactions)} transactions...")
             for txn in transactions:
                 category, confidence = categorise_transaction(
@@ -199,26 +212,24 @@ async def upload_statement(
             logger.info(f"Categorisation complete: {categorised}/{len(transactions)} categorised")
 
             # STEP 4: Store all transactions in database
-            # Uses psycopg2.execute_values() for bulk insert (efficient)
-            # Transaction already open via get_db() context manager
             logger.debug(f"Storing {len(transactions)} transactions to database...")
-            store_transactions(conn, user_id, upload_id, transactions)
+            store_transactions(
+                conn, user_id, upload_id, transactions,
+                account_type=account_type,
+                billing_month=billing_month,
+            )
             logger.debug(f"Transactions stored successfully")
 
             # STEP 5: Mark upload as complete
-            # Sets status to COMPLETED, stores transaction count
             update_upload_success(conn, upload_id, len(transactions))
             logger.info(f"Upload marked successful: {len(transactions)} transactions")
 
         except HTTPException as e:
-            # Parsing or storage failed — mark upload record as failed
-            # HTTP exceptions pass through (401, 422, etc.)
             logger.warning(f"Upload failed with HTTPException: {e.status_code} — {e.detail}")
             update_upload_failed(conn, upload_id)
-            raise  # Re-raise to return to frontend
+            raise
 
         except Exception as e:
-            # Unexpected error — mark upload failed and wrap in HTTPException
             logger.error(f"Upload failed with exception: {type(e).__name__}: {e}")
             update_upload_failed(conn, upload_id)
             raise HTTPException(
@@ -226,7 +237,11 @@ async def upload_statement(
                 detail="Failed to store transactions. Please try again."
             )
 
-    # Success — return all parsed transactions to frontend
+    # Add account_type and billing_month to each transaction dict for the response
+    for txn in transactions:
+        txn['account_type'] = account_type
+        txn['billing_month'] = billing_month
+
     logger.info(f"Upload completed successfully: {len(transactions)} transactions returned")
     return UploadResponse(
         message="Statement uploaded and stored successfully",
@@ -234,6 +249,8 @@ async def upload_statement(
         transaction_count=len(transactions),
         skipped_count=skipped_count,
         filename=file.filename,
+        statement_type=statement_type,
+        billing_month=billing_month,
         transactions=[ParsedTransaction(**t) for t in transactions]
     )
 

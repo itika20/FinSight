@@ -37,7 +37,7 @@ const DashboardPage = () => {
   const { user, logout } = useAuth()
   const {
     filteredTransactions,
-    totalCount, totalSpend, totalIncome, preSalaryBalance, preSalaryAccounts, avgMonthlySavings,
+    totalCount, totalSpend, totalIncome, preSalaryBalance, preSalaryAccounts, totalInvestments,
     isLoading, error,
     dateRange,
     selectedMonth, availableMonths, setSelectedMonth,
@@ -339,12 +339,12 @@ const DashboardPage = () => {
               <div className="bg-white rounded-xl border border-gray-100 p-5">
                 <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Total Savings</p>
                 <p className="text-2xl font-bold text-gray-800 mt-2">
-                  {avgMonthlySavings > 0
-                    ? '₹' + avgMonthlySavings.toLocaleString('en-IN', { maximumFractionDigits: 0 })
+                  {totalInvestments > 0
+                    ? '₹' + totalInvestments.toLocaleString('en-IN', { maximumFractionDigits: 0 })
                     : '—'}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">
-                  {avgMonthlySavings > 0 ? 'avg investments' : 'no investment transactions'}
+                  {totalInvestments > 0 ? 'investments this period' : 'no investment transactions'}
                 </p>
               </div>
               <button

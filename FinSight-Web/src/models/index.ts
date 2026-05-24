@@ -22,6 +22,8 @@ export interface Transaction {
   balance: number | null
   category?: string | null
   confidence?: string | null  // 'high' | 'medium' | 'low' | 'uncategorised' | 'user_confirmed'
+  account_type?: string        // 'bank' | 'credit_card'
+  billing_month?: string | null // 'YYYY-MM' for CC transactions, null for bank
 }
 
 export interface DateRange {
@@ -36,6 +38,8 @@ export interface Upload {
   transaction_count: number
   status: string
   created_at: string
+  statement_type?: string       // 'bank' | 'credit_card'
+  billing_month?: string | null // 'YYYY-MM' for CC uploads
 }
 
 export interface UploadListResponse {
@@ -57,12 +61,14 @@ export interface AccountOpeningBalance {
 export interface TransactionContextType {
   transactions: Transaction[]           // full unfiltered list
   filteredTransactions: Transaction[]   // filtered by selectedMonth (or all if null)
+  transactionsByMonth: Record<string, Transaction[]> // salary-window slice per available month
   totalCount: number                    // count of filteredTransactions
   totalSpend: number                    // filtered by selectedMonth
   totalIncome: number                   // sum of transactions tagged as 'Salary', filtered by selectedMonth
   preSalaryBalance: number | null        // balance across accounts BEFORE this period's salary arrived
   preSalaryAccounts: AccountOpeningBalance[]       // per-account breakdown for the pre-salary balance
   topCategory: string | null            // filtered by selectedMonth
+  totalInvestments: number              // Investments debits in the selected salary window
   avgMonthlySavings: number             // overall average across all months (not filtered)
   dateRange: DateRange
   isLoading: boolean

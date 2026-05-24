@@ -25,7 +25,8 @@ from app.core.constants import (
     SUPPORTED_FILE_TYPE,
     VALID_PDF_MIMES,
     MAX_FILE_SIZE_BYTES,
-    LOGGER_PARSING
+    LOGGER_PARSING,
+    STATEMENT_TYPE_CREDIT_CARD,
 )
 
 # Initialize logger for this module
@@ -478,26 +479,200 @@ Bank statement text:
     return all_transactions, skipped
 
 # ─────────────────────────────────────────────
+# CREDIT CARD STATEMENT PARSING
+# ─────────────────────────────────────────────
+
+# LLM prompt for credit card statements.
+# CC statements differ from bank statements:
+#   - No running balance column (so we can't use balance-direction signals)
+#   - All rows are charges (debits); "PAYMENT" rows are bill payments — skip them
+#   - Amounts are always positive in the statement; we make them negative (debit)
+_CC_PROMPT_TEMPLATE = """You are a credit card statement parser specialising in Indian credit card statements.
+Extract ALL CHARGE transactions from the text below.
+
+Return ONLY a valid JSON array. No explanation, no markdown, no code blocks.
+Each object must have exactly these fields:
+- "date": string in YYYY-MM-DD format
+- "description": string (the merchant name or narration from the statement)
+- "amount": number — NEGATIVE (all CC charges are spending, i.e. debits)
+- "type": "debit" (all charges are always "debit")
+- "balance": null (CC statements have no running balance)
+
+━━━ RULES ━━━
+
+- SKIP rows labelled "Payment", "Payment Received", "Bill Payment", "PAYMENT THANK YOU",
+  or any row that represents a payment towards the CC bill — these are not charges.
+- SKIP header rows, summary rows, reward points rows, opening/closing balance rows.
+- All charges (shopping, dining, utilities, subscriptions, etc.) → type = "debit", amount = NEGATIVE.
+- Cashback or refund credits → type = "credit", amount = POSITIVE.
+- Indian number format: "1,45,004.64" → 145004.64
+- If the statement shows amounts without a sign, make them NEGATIVE (they are charges).
+
+Credit card statement text:
+{text}"""
+
+
+def _parse_cc_pdf_llm(file_bytes: bytes) -> tuple[list[dict], int]:
+    """
+    Internal: Extracts transactions from a credit card statement PDF using GPT-4o.
+    Uses the CC-specific prompt (no balance signals; skip payment rows).
+    """
+    logger.info("Starting CC PDF parsing")
+
+    pages_text = []
+    try:
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            logger.debug(f"CC PDF opened: {len(pdf.pages)} pages")
+            for page_num, page in enumerate(pdf.pages, 1):
+                text = page.extract_text()
+                if text and text.strip():
+                    pages_text.append(text)
+    except Exception as e:
+        logger.error(f"Failed to extract CC PDF text: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "parse_failed", "message": ERROR_PARSE_FAILED}
+        )
+
+    if not pages_text:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "parse_failed", "message": "Could not extract text from PDF."}
+        )
+
+    chunks = []
+    for i in range(0, len(pages_text), PAGES_PER_CHUNK):
+        chunks.append('\n'.join(pages_text[i:i + PAGES_PER_CHUNK]))
+
+    all_transactions = []
+    skipped = 0
+
+    for chunk_num, chunk_text in enumerate(chunks, 1):
+        logger.info(f"CC chunk {chunk_num}/{len(chunks)} ({len(chunk_text)} chars)")
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": _CC_PROMPT_TEMPLATE.format(text=chunk_text)}],
+                temperature=0,
+                max_tokens=16000
+            )
+            raw_response = response.choices[0].message.content.strip()
+            raw_response = re.sub(r'^```(?:json)?\s*', '', raw_response)
+            raw_response = re.sub(r'\s*```$', '', raw_response)
+
+            try:
+                parsed = json.loads(raw_response)
+            except json.JSONDecodeError:
+                last_complete = raw_response.rfind('},')
+                if last_complete == -1:
+                    last_complete = raw_response.rfind('}')
+                if last_complete > 0:
+                    salvaged = raw_response[:last_complete + 1] + ']'
+                    salvaged = re.sub(r',\s*\]', ']', salvaged)
+                    if not salvaged.strip().startswith('['):
+                        salvaged = '[' + salvaged
+                    parsed = json.loads(salvaged)
+                else:
+                    continue
+
+            if not isinstance(parsed, list):
+                continue
+
+            for item in parsed:
+                try:
+                    date_str = str(item.get('date', '')).strip()
+                    parsed_date = parse_date(date_str)
+                    if not parsed_date:
+                        skipped += 1
+                        continue
+
+                    description = str(item.get('description', 'Unknown')).strip() or 'Unknown'
+
+                    raw_amount = item.get('amount')
+                    if raw_amount is None:
+                        skipped += 1
+                        continue
+
+                    amount = float(str(raw_amount).replace(',', ''))
+                    if amount == 0:
+                        skipped += 1
+                        continue
+
+                    txn_type = item.get('type', 'debit').strip().lower()
+                    if txn_type not in ('credit', 'debit'):
+                        txn_type = 'credit' if amount > 0 else 'debit'
+
+                    # Enforce sign: debit must be negative, credit positive
+                    if txn_type == 'debit' and amount > 0:
+                        amount = -amount
+                    elif txn_type == 'credit' and amount < 0:
+                        amount = -amount
+
+                    all_transactions.append({
+                        "transaction_id": str(uuid.uuid4()),
+                        "date": parsed_date,
+                        "description": description,
+                        "amount": round(amount, 2),
+                        "type": txn_type,
+                        "balance": None
+                    })
+                except Exception:
+                    skipped += 1
+                    continue
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"CC chunk {chunk_num} failed: {e}")
+            continue
+
+    logger.info(f"CC PDF parsed: {len(all_transactions)} transactions, {skipped} skipped")
+
+    if len(all_transactions) < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "parse_failed", "message": "No valid transactions found. Ensure this is a valid credit card statement."}
+        )
+
+    return all_transactions, skipped
+
+
+def parse_cc_pdf(file_bytes: bytes) -> tuple[list[dict], int]:
+    """Entry point for parsing a credit card statement PDF."""
+    try:
+        return _parse_cc_pdf_llm(file_bytes)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"CC PDF parsing failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "parse_failed", "message": ERROR_PARSE_FAILED}
+        )
+
+
+# ─────────────────────────────────────────────
 # MAIN ENTRY POINT
 # ─────────────────────────────────────────────
 
-def parse_statement(file_bytes: bytes, file_type: str) -> tuple[list[dict], int]:
+def parse_statement(file_bytes: bytes, file_type: str, statement_type: str = 'bank') -> tuple[list[dict], int]:
     """
-    Entry point for parsing a bank statement file.
-    Routes to appropriate parser based on file type.
-    
+    Entry point for parsing a bank or credit card statement file.
+    Routes to appropriate parser based on file type and statement type.
+
     Args:
         file_bytes: Raw file bytes
         file_type: File type identifier (e.g., 'pdf')
-        
+        statement_type: 'bank' or 'credit_card'
+
     Returns:
         tuple: (transactions_list, skipped_count)
-        
+
     Raises:
         HTTPException: 400 if unsupported file type, 422 if parsing fails
     """
-    logger.info(f"parse_statement called with file_type: {file_type}")
-    
+    logger.info(f"parse_statement called with file_type: {file_type}, statement_type: {statement_type}")
+
     if file_type != SUPPORTED_FILE_TYPE:
         logger.error(f"Unsupported file type: {file_type}")
         raise HTTPException(
@@ -507,5 +682,8 @@ def parse_statement(file_bytes: bytes, file_type: str) -> tuple[list[dict], int]
                 "message": ERROR_INVALID_FILE_FORMAT
             }
         )
-    
+
+    if statement_type == STATEMENT_TYPE_CREDIT_CARD:
+        return parse_cc_pdf(file_bytes)
+
     return parse_pdf(file_bytes)

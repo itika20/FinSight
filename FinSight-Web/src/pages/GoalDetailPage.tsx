@@ -874,13 +874,13 @@ const GoalDetailPage = () => {
         </div>
       </div>
 
-      {/* Adjust plan modal — pre-filled with this goal */}
+      {/* Adjust plan modal — pre-filled with this goal; updates in-place on save */}
       <CreateGoalModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSaved={() => {
           setIsModalOpen(false)
-          navigate('/goals')
+          loadGoals()   // refresh detail page with updated plan; don't navigate away
         }}
         initialGoal={goal}
       />

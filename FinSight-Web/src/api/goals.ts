@@ -29,6 +29,15 @@ export const saveGoalApi = async (payload: GoalSaveRequest): Promise<{ id: strin
   return response.data
 }
 
+/** PUT /goals/{id} — update an existing goal's plan fields in-place. */
+export const updateGoalApi = async (
+  goalId: string,
+  payload: GoalSaveRequest,
+): Promise<{ id: string; message: string }> => {
+  const response = await api.put<{ id: string; message: string }>(`/goals/${goalId}`, payload)
+  return response.data
+}
+
 /** GET /goals — list saved goals with live on-track status. */
 export const listGoalsApi = async (): Promise<SavedGoalListResponse> => {
   const response = await api.get<SavedGoalListResponse>('/goals')

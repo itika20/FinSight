@@ -39,70 +39,112 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
   const [preSalaryAccounts, setPreSalaryAccounts] = useState<import('../models').AccountOpeningBalance[]>([])
 
   // ── Available months (derived from transactions, newest first) ──
+  // Bank transactions: month derived from date
+  // CC transactions: month derived from billing_month
   const availableMonths = useMemo(() => {
     const monthSet = new Set<string>()
     for (const t of transactions) {
-      monthSet.add(t.date.slice(0, 7)) // 'YYYY-MM'
+      if (t.account_type === 'credit_card' && t.billing_month) {
+        monthSet.add(t.billing_month)
+      } else {
+        monthSet.add(t.date.slice(0, 7))
+      }
     }
     return Array.from(monthSet).sort((a, b) => b.localeCompare(a))
   }, [transactions])
 
   // ── Salary-based spending window ───────────────────────────────
-  // For each selected month, the "spending period" runs from the salary that
-  // funded this month (previous month's salary arriving on day >= 20) through
+  // The "spending period" for a given month runs from the salary that
+  // funded it (previous month's salary arriving on day >= 20) through
   // to the day before the next salary arrives (current month day >= 20).
   // Falls back to calendar month bounds when no anchoring salary exists.
   const SALARY_SHIFT_DAY = 20
-  const salaryWindow = useMemo((): { start: string; end: string } | null => {
-    if (!selectedMonth) return null
-    const [y, m] = selectedMonth.split('-').map(Number)
-    const prevMonth = m === 1
-      ? `${y - 1}-12`
-      : `${y}-${String(m - 1).padStart(2, '0')}`
 
-    // Earliest late salary in previous month (day >= 20) → window start
-    const prevLateSalaries = transactions
-      .filter(t =>
-        t.category === 'Salary' && t.type === 'credit' &&
-        t.date.startsWith(prevMonth) &&
-        parseInt(t.date.slice(8, 10), 10) >= SALARY_SHIFT_DAY
-      )
-      .sort((a, b) => a.date.localeCompare(b.date))
+  /**
+   * Compute the salary-window bounds for any 'YYYY-MM' string.
+   * Pure function — extracted so it can be reused for every available month
+   * (not just the currently selected one) when building transactionsByMonth.
+   */
+  const computeSalaryWindow = useCallback(
+    (ym: string): { start: string; end: string } => {
+      const [y, m] = ym.split('-').map(Number)
+      const prevMonth = m === 1
+        ? `${y - 1}-12`
+        : `${y}-${String(m - 1).padStart(2, '0')}`
 
-    // Earliest late salary in current month (day >= 20) → window end (day before)
-    const currLateSalaries = transactions
-      .filter(t =>
-        t.category === 'Salary' && t.type === 'credit' &&
-        t.date.startsWith(selectedMonth) &&
-        parseInt(t.date.slice(8, 10), 10) >= SALARY_SHIFT_DAY
-      )
-      .sort((a, b) => a.date.localeCompare(b.date))
+      const prevLateSalaries = transactions
+        .filter(t =>
+          t.category === 'Salary' && t.type === 'credit' &&
+          t.date.startsWith(prevMonth) &&
+          parseInt(t.date.slice(8, 10), 10) >= SALARY_SHIFT_DAY
+        )
+        .sort((a, b) => a.date.localeCompare(b.date))
 
-    const windowStart = prevLateSalaries.length > 0
-      ? prevLateSalaries[0].date
-      : `${selectedMonth}-01`
+      const currLateSalaries = transactions
+        .filter(t =>
+          t.category === 'Salary' && t.type === 'credit' &&
+          t.date.startsWith(ym) &&
+          parseInt(t.date.slice(8, 10), 10) >= SALARY_SHIFT_DAY
+        )
+        .sort((a, b) => a.date.localeCompare(b.date))
 
-    let windowEnd: string
-    if (currLateSalaries.length > 0) {
-      const d = new Date(currLateSalaries[0].date)
-      d.setDate(d.getDate() - 1)
-      windowEnd = d.toISOString().slice(0, 10)
-    } else {
-      // Last day of the selected calendar month
-      windowEnd = new Date(y, m, 0).toISOString().slice(0, 10)
+      const windowStart = prevLateSalaries.length > 0
+        ? prevLateSalaries[0].date
+        : `${ym}-01`
+
+      let windowEnd: string
+      if (currLateSalaries.length > 0) {
+        const d = new Date(currLateSalaries[0].date)
+        d.setDate(d.getDate() - 1)
+        windowEnd = d.toISOString().slice(0, 10)
+      } else {
+        windowEnd = new Date(y, m, 0).toISOString().slice(0, 10)
+      }
+
+      return { start: windowStart, end: windowEnd }
+    },
+    [transactions]
+  )
+
+  const salaryWindow = useMemo(
+    () => selectedMonth ? computeSalaryWindow(selectedMonth) : null,
+    [selectedMonth, computeSalaryWindow]
+  )
+
+  // ── Per-month transaction slices (salary-window-adjusted) ───────
+  // Used by analytics trend charts so every month's bar shows the same
+  // transactions the dashboard shows when you select that month tab.
+  // Bank transactions are sliced by each month's salary window;
+  // CC transactions are sliced by billing_month.
+  const transactionsByMonth = useMemo(() => {
+    const bankTxns = transactions.filter(t => t.account_type !== 'credit_card')
+    const ccTxns   = transactions.filter(t => t.account_type === 'credit_card')
+    const map: Record<string, Transaction[]> = {}
+    for (const ym of availableMonths) {
+      const window = computeSalaryWindow(ym)
+      const filteredBank = bankTxns.filter(t => t.date >= window.start && t.date <= window.end)
+      const filteredCC   = ccTxns.filter(t => t.billing_month === ym)
+      map[ym] = [...filteredBank, ...filteredCC]
     }
-
-    return { start: windowStart, end: windowEnd }
-  }, [transactions, selectedMonth])
+    return map
+  }, [transactions, availableMonths, computeSalaryWindow])
 
   // ── Month-filtered transaction slice ────────────────────────────
-  // Uses the salary window when available; falls back to calendar month.
+  // Bank transactions: salary window (or calendar month fallback)
+  // CC transactions: billing_month === selectedMonth
   const filteredTransactions = useMemo(() => {
     if (!selectedMonth) return transactions
-    if (salaryWindow) {
-      return transactions.filter(t => t.date >= salaryWindow.start && t.date <= salaryWindow.end)
-    }
-    return transactions.filter(t => t.date.startsWith(selectedMonth))
+
+    const bankTxns = transactions.filter(t => t.account_type !== 'credit_card')
+    const ccTxns   = transactions.filter(t => t.account_type === 'credit_card')
+
+    const filteredBank = salaryWindow
+      ? bankTxns.filter(t => t.date >= salaryWindow.start && t.date <= salaryWindow.end)
+      : bankTxns.filter(t => t.date.startsWith(selectedMonth))
+
+    const filteredCC = ccTxns.filter(t => t.billing_month === selectedMonth)
+
+    return [...filteredBank, ...filteredCC]
   }, [transactions, selectedMonth, salaryWindow])
 
   // ── Derived stats (from filtered slice) ────────────────────────
@@ -142,8 +184,20 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
   }, [filteredTransactions])
 
   /**
-   * avgMonthlySavings is always the overall average (across all months, not filtered),
-   * because it represents a baseline investment habit rather than a single month's view.
+   * totalInvestments — sum of Investments-category debits in the current salary window
+   * (same filteredTransactions source as totalSpend / totalIncome).
+   * Used on the dashboard "Total Savings" card so it matches the analytics view exactly.
+   */
+  const totalInvestments = useMemo(() =>
+    filteredTransactions
+      .filter(t => t.type === 'debit' && t.category === 'Investments')
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0),
+    [filteredTransactions]
+  )
+
+  /**
+   * avgMonthlySavings — overall average monthly investment across all history.
+   * Kept for any future cross-month baseline comparisons.
    */
   const avgMonthlySavings = useMemo(() => {
     const monthlyTotals: Record<string, number> = {}
@@ -247,12 +301,14 @@ export const TransactionProvider = ({ children }: TransactionProviderProps) => {
   const value: TransactionContextType = {
     transactions,
     filteredTransactions,
+    transactionsByMonth,
     totalCount,
     totalSpend,
     totalIncome,
     preSalaryBalance,
     preSalaryAccounts,
     topCategory,
+    totalInvestments,
     avgMonthlySavings,
     dateRange,
     isLoading,

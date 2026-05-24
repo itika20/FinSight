@@ -52,11 +52,15 @@ export interface TransactionListResponse {
  */
 export const uploadStatementApi = async (
   file: File,
-  onUploadProgress?: (percent: number) => void
+  onUploadProgress?: (percent: number) => void,
+  statementType: string = 'bank',
+  billingMonth?: string
 ): Promise<UploadResponse> => {
   // FormData required for file uploads (not JSON)
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('statement_type', statementType)
+  if (billingMonth) formData.append('billing_month', billingMonth)
 
   const response = await api.post<UploadResponse>(UPLOAD_ENDPOINTS.STATEMENT, formData, {
     headers: {

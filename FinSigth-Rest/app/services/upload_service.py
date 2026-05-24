@@ -26,36 +26,42 @@ logger = logging.getLogger(LOGGER_UPLOAD)
 # UPLOAD OPERATIONS
 # ─────────────────────────────────────────────
 
-def create_upload_record(conn, user_id: str, filename: str, file_type: str) -> str:
+def create_upload_record(
+    conn,
+    user_id: str,
+    filename: str,
+    file_type: str,
+    statement_type: str = 'bank',
+    billing_month: str = None
+) -> str:
     """
     Creates a new upload record in the database.
     Called BEFORE parsing to establish an upload ID and track the operation.
-    
+
     Args:
         conn: Database connection
         user_id: UUID of the user performing the upload
         filename: Original filename from the form submission
         file_type: Type of file (e.g., 'pdf')
-        
+        statement_type: 'bank' or 'credit_card'
+        billing_month: 'YYYY-MM' for CC statements; None for bank statements
+
     Returns:
         str: Generated UUID for this upload record
-        
-    Note:
-        Status starts as 'processing'. Updated to 'completed' or 'failed' after parsing.
-        This allows tracking uploads even if parsing fails.
     """
     upload_id = str(uuid.uuid4())
-    logger.info(f"Creating upload record: {upload_id} for user {user_id}, file: {filename}")
+    logger.info(f"Creating upload record: {upload_id} for user {user_id}, file: {filename}, type: {statement_type}")
 
     with conn.cursor() as cursor:
         cursor.execute(
             """
-            INSERT INTO uploads (id, user_id, filename, file_type, status, transaction_count)
-            VALUES (%s, %s, %s, %s, %s, 0)
+            INSERT INTO uploads (id, user_id, filename, file_type, status, transaction_count,
+                                 statement_type, billing_month)
+            VALUES (%s, %s, %s, %s, %s, 0, %s, %s)
             """,
-            (upload_id, user_id, filename, file_type, UPLOAD_STATUS_PROCESSING)
+            (upload_id, user_id, filename, file_type, UPLOAD_STATUS_PROCESSING, statement_type, billing_month)
         )
-    
+
     logger.debug(f"Upload record created: {upload_id}")
     return upload_id
 
@@ -117,31 +123,36 @@ def update_upload_failed(conn, upload_id: str):
 # TRANSACTION OPERATIONS
 # ─────────────────────────────────────────────
 
-def store_transactions(conn, user_id: str, upload_id: str, transactions: list[dict]):
+def store_transactions(
+    conn,
+    user_id: str,
+    upload_id: str,
+    transactions: list[dict],
+    account_type: str = 'bank',
+    billing_month: str = None
+):
     """
     Bulk inserts all parsed transactions into the database.
     Uses psycopg2's execute_values() for efficient bulk operations.
-    Much faster than looping and calling execute() per row.
-    
+
     Args:
         conn: Database connection
         user_id: UUID of the user who owns these transactions
         upload_id: UUID of the upload record to link transactions to
         transactions: List of transaction dicts from the parser
-        
+        account_type: 'bank' or 'credit_card' — denormalized from upload
+        billing_month: 'YYYY-MM' for CC statements; None for bank statements
+
     Note:
         Empty transaction list is silently skipped (no-op).
         Transaction is atomic: all transactions are stored or none are.
-        Missing optional fields (category, confidence) default to NULL.
     """
     if not transactions:
         logger.debug("No transactions to store (empty list)")
         return
 
-    logger.info(f"Storing {len(transactions)} transactions for user {user_id}, upload {upload_id}")
+    logger.info(f"Storing {len(transactions)} transactions for user {user_id}, upload {upload_id}, account_type={account_type}")
 
-    # ── Build list of tuples — one per transaction
-    # Order MUST match INSERT column order below
     values = [
         (
             row['transaction_id'],      # id
@@ -154,6 +165,8 @@ def store_transactions(conn, user_id: str, upload_id: str, transactions: list[di
             row.get('balance'),         # balance (optional)
             row.get('category'),        # category (optional)
             row.get('confidence'),      # confidence (optional)
+            account_type,               # account_type
+            billing_month,              # billing_month (NULL for bank)
         )
         for row in transactions
     ]
@@ -164,7 +177,8 @@ def store_transactions(conn, user_id: str, upload_id: str, transactions: list[di
                 cursor,
                 """
                 INSERT INTO transactions
-                    (id, user_id, upload_id, date, description, amount, type, balance, category, confidence)
+                    (id, user_id, upload_id, date, description, amount, type, balance,
+                     category, confidence, account_type, billing_month)
                 VALUES %s
                 """,
                 values
@@ -237,7 +251,9 @@ def get_transactions(
             type,
             balance,
             category,
-            confidence
+            confidence,
+            COALESCE(account_type, 'bank') as account_type,
+            billing_month
         FROM transactions
         WHERE user_id = %s
     """
@@ -355,7 +371,9 @@ def list_uploads(conn, user_id: str) -> list[dict]:
     with conn.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, filename, file_type, created_at, transaction_count, status
+            SELECT id, filename, file_type, created_at, transaction_count, status,
+                   COALESCE(statement_type, 'bank') AS statement_type,
+                   billing_month
             FROM uploads
             WHERE user_id = %s AND status = %s
             ORDER BY created_at DESC
@@ -372,6 +390,8 @@ def list_uploads(conn, user_id: str) -> list[dict]:
             'created_at': str(row['created_at']),
             'transaction_count': row['transaction_count'] or 0,
             'status': row['status'],
+            'statement_type': row['statement_type'],
+            'billing_month': row['billing_month'],
         }
         for row in rows
     ]
@@ -497,12 +517,15 @@ def get_opening_balances(conn, user_id: str, month_str: str) -> list[dict]:
             tx_counts AS (
                 -- Count each upload's transactions: how many land in the target month
                 -- vs the upload's total, so we can identify the primary statement.
+                -- Only bank uploads have meaningful running balances.
                 SELECT
                     t.upload_id,
                     COUNT(*) FILTER (WHERE TO_CHAR(t.date, 'YYYY-MM') = %s) AS in_month,
                     COUNT(*)                                                  AS total
                 FROM transactions t
+                JOIN uploads u ON u.id = t.upload_id
                 WHERE t.user_id = %s
+                  AND COALESCE(u.statement_type, 'bank') = 'bank'
                 GROUP BY t.upload_id
             ),
             primary_uploads AS (
@@ -613,7 +636,9 @@ def get_pre_salary_balance(conn, user_id: str, month_str: str) -> list[dict]:
                        COUNT(*) FILTER (WHERE TO_CHAR(t.date, 'YYYY-MM') = %s) AS in_month,
                        COUNT(*) AS total
                 FROM transactions t
+                JOIN uploads u ON u.id = t.upload_id
                 WHERE t.user_id = %s
+                  AND COALESCE(u.statement_type, 'bank') = 'bank'
                 GROUP BY t.upload_id
             ),
             primary_uploads AS (

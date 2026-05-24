@@ -152,6 +152,7 @@ def build_user_profile(
         FROM transactions
         WHERE user_id = %s AND category IS NOT NULL
           AND category NOT IN ('Transfers', 'Salary')
+          AND COALESCE(account_type, 'bank') = 'bank'
         GROUP BY TO_CHAR(date, 'YYYY-MM'), category
         """,
         (user_id,),
@@ -168,6 +169,7 @@ def build_user_profile(
                ) AS monthly_total
         FROM transactions
         WHERE user_id = %s AND category NOT IN ('Transfers', 'Salary')
+          AND COALESCE(account_type, 'bank') = 'bank'
         GROUP BY TO_CHAR(date, 'YYYY-MM')
         """,
         (user_id,),
@@ -197,6 +199,7 @@ def build_user_profile(
               END) AS regular_income
             FROM transactions
             WHERE user_id = %s
+              AND COALESCE(account_type, 'bank') = 'bank'
             GROUP BY TO_CHAR(date, 'YYYY-MM')
             """,
             (user_id,),
@@ -605,6 +608,66 @@ def save_goal_plan(user_id: str, payload, conn) -> str:
         goal_id, user_id, payload.goal_name, accumulated_savings,
     )
     return goal_id
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Update an existing goal plan (PUT /goals/{id})
+# ─────────────────────────────────────────────────────────────────────────────
+def update_goal_plan(user_id: str, goal_id: str, payload, conn) -> None:
+    """
+    Updates plan fields for an existing goal in-place.
+
+    Preserved (not touched):
+      - accumulated_savings_at_creation   (existing-savings snapshot)
+      - count_existing_savings            (user's toggle preference)
+      - created_at                        (original creation timestamp)
+      - goal_investments                  (tagged investment history)
+
+    Updated:
+      - goal_name, goal_amount, goal_months, required_monthly_saving
+      - monthly_income_used, income_override, cluster_id, cluster_label
+      - decisions, total_monthly_cutback, baselines
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE user_goals
+           SET goal_name               = %s,
+               goal_amount             = %s,
+               goal_months             = %s,
+               required_monthly_saving = %s,
+               monthly_income_used     = %s,
+               income_override         = %s,
+               cluster_id              = %s,
+               cluster_label           = %s,
+               decisions               = %s,
+               total_monthly_cutback   = %s,
+               baselines               = %s
+         WHERE id = %s AND user_id = %s
+        """,
+        (
+            payload.goal_name,
+            payload.goal_amount,
+            payload.goal_months,
+            payload.required_monthly_saving,
+            payload.monthly_income_used,
+            payload.income_override,
+            payload.cluster_id,
+            payload.cluster_label,
+            json.dumps(payload.decisions),
+            payload.total_monthly_cutback,
+            json.dumps(payload.baselines),
+            goal_id,
+            user_id,
+        ),
+    )
+    if cursor.rowcount == 0:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail='Goal not found or access denied.')
+    logger.info(
+        "[goal_service] Updated goal id=%s user=%s name=%s",
+        goal_id, user_id, payload.goal_name,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

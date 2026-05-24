@@ -47,6 +47,10 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }: UploadModalProps) => 
     uploadProgress,
     errorMessage,
     transactionCount,
+    statementType,
+    setStatementType,
+    billingMonth,
+    setBillingMonth,
     handleFileSelect,
     handleDropError,
     handleUpload,
@@ -105,13 +109,13 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }: UploadModalProps) => 
           onClick={e => e.stopPropagation()}
         >
           {/* Modal header */}
-          <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">
-                Upload Bank Statement
+                Upload Statement
               </h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Supports PDF — HDFC, SBI, ICICI.{' '}
+                Supports PDF — HDFC, SBI, ICICI, Axis, HDFC CC.{' '}
                 <button
                   onClick={() => setIsPrivacyModalOpen(true)}
                   disabled={isUploadInProgress}
@@ -137,6 +141,61 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }: UploadModalProps) => 
               </svg>
             </button>
           </div>
+
+          {/* Statement type toggle — only shown while idle or selected */}
+          {!isUploadInProgress && uploadState !== 'success' && uploadState !== 'error' && (
+            <div className="mb-4">
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+                <button
+                  onClick={() => setStatementType('bank')}
+                  className={`flex-1 py-2 font-medium transition-colors ${
+                    statementType === 'bank'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  Bank Statement
+                </button>
+                <button
+                  onClick={() => setStatementType('credit_card')}
+                  className={`flex-1 py-2 font-medium transition-colors ${
+                    statementType === 'credit_card'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  Credit Card
+                </button>
+              </div>
+
+              {/* Billing month picker — only for CC */}
+              {statementType === 'credit_card' && (
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Billing month
+                    <span className="text-gray-400 font-normal ml-1">
+                      — which month does this CC bill belong to?
+                    </span>
+                  </label>
+                  <input
+                    type="month"
+                    value={billingMonth}
+                    onChange={e => setBillingMonth(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  />
+                  {billingMonth && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      CC charges will appear under{' '}
+                      <span className="font-medium text-gray-600">
+                        {new Date(billingMonth + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                      </span>{' '}
+                      in the dashboard.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Upload content — all states handled here */}
           <UploadContent

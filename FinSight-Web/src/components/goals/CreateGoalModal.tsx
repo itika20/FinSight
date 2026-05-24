@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getGoalPlanApi, saveGoalApi } from '../../api/goals'
+import { getGoalPlanApi, saveGoalApi, updateGoalApi } from '../../api/goals'
 import { getTransactionsApi, updateCategoryApi } from '../../api/upload'
 import RecommendationCard from './RecommendationCard'
 import PlanHealthBar from './PlanHealthBar'
@@ -294,7 +294,7 @@ const CreateGoalModal = ({
   // where allocate_cutbacks() leaves a tiny residual (e.g. ₹136 on ₹50,000).
   const canSave = goalData ? (covered >= goalData.required_monthly_saving * 0.997) : false
 
-  // ─── Save plan ────────────────────────────────────────────────
+  // ─── Save plan (create new OR update existing) ───────────────
   const handleSave = async () => {
     if (!goalData || !canSave) return
     setIsSaving(true)
@@ -306,20 +306,28 @@ const CreateGoalModal = ({
     goalData.recommendations.forEach(r => {
       baselines[r.category] = r.current_monthly_spend
     })
+    const payload = {
+      goal_name:                name.trim(),
+      goal_amount:              parseAmount(amountDisplay),
+      goal_months:              months,
+      required_monthly_saving:  goalData.required_monthly_saving,
+      monthly_income_used:      goalData.monthly_income_estimate,
+      cluster_id:               goalData.cluster_id,
+      cluster_label:            goalData.cluster_label,
+      decisions,
+      total_monthly_cutback:    totalCutback,
+      baselines,
+    }
     try {
-      await saveGoalApi({
-        goal_name:                name.trim(),
-        goal_amount:              parseAmount(amountDisplay),
-        goal_months:              months,
-        required_monthly_saving:  goalData.required_monthly_saving,
-        monthly_income_used:      goalData.monthly_income_estimate,
-        cluster_id:               goalData.cluster_id,
-        cluster_label:            goalData.cluster_label,
-        decisions,
-        total_monthly_cutback:    totalCutback,
-        baselines,
-      })
-      console.log('[CreateGoalModal] Goal saved successfully')
+      if (initialGoal) {
+        // Adjust flow: update the existing goal in-place (preserves tagged
+        // investments, accumulated savings, and the existing-savings toggle).
+        await updateGoalApi(initialGoal.id, payload)
+        console.log('[CreateGoalModal] Goal updated successfully id=%s', initialGoal.id)
+      } else {
+        await saveGoalApi(payload)
+        console.log('[CreateGoalModal] Goal saved successfully')
+      }
       onSaved()
     } catch {
       setSaveError('Could not save the goal. Please try again.')
@@ -366,7 +374,9 @@ const CreateGoalModal = ({
           <>
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-lg font-bold text-gray-900">Create a savings goal</h2>
+              <h2 className="text-lg font-bold text-gray-900">
+                {initialGoal ? 'Adjust savings goal' : 'Create a savings goal'}
+              </h2>
               <button
                 onClick={handleClose}
                 aria-label="Close modal"
@@ -885,7 +895,7 @@ const CreateGoalModal = ({
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
-                        Save this plan
+                        {initialGoal ? 'Update this plan' : 'Save this plan'}
                       </>
                     )}
                   </button>

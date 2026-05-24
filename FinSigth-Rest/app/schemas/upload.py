@@ -13,14 +13,18 @@ class ParsedTransaction(BaseModel):
     balance: Optional[float] = None
     category: Optional[str] = None
     confidence: Optional[str] = None
+    account_type: str = 'bank'
+    billing_month: Optional[str] = None
 
 # What the upload endpoint returns
 class UploadResponse(BaseModel):
     message: str
-    upload_id: str          
+    upload_id: str
     transaction_count: int
-    skipped_count: int      
+    skipped_count: int
     filename: str
+    statement_type: str = 'bank'
+    billing_month: Optional[str] = None
     transactions: list[ParsedTransaction]
 
 class TransactionListResponse(BaseModel):
@@ -45,6 +49,8 @@ class Upload(BaseModel):
     transaction_count: int
     status: str
     created_at: str
+    statement_type: str = 'bank'
+    billing_month: Optional[str] = None
 
 class UploadListResponse(BaseModel):
     uploads: list[Upload]

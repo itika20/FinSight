@@ -10,6 +10,19 @@ Centralized configuration for magic numbers, strings, and business logic constan
 # Maximum file size: 10MB
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
+# ─────────────────────────────────────────────
+# STATEMENT / ACCOUNT TYPE CONSTANTS
+# ─────────────────────────────────────────────
+
+# Statement types (stored on uploads.statement_type)
+STATEMENT_TYPE_BANK = 'bank'
+STATEMENT_TYPE_CREDIT_CARD = 'credit_card'
+VALID_STATEMENT_TYPES = {STATEMENT_TYPE_BANK, STATEMENT_TYPE_CREDIT_CARD}
+
+# Account types (denormalized onto transactions.account_type)
+ACCOUNT_TYPE_BANK = 'bank'
+ACCOUNT_TYPE_CREDIT_CARD = 'credit_card'
+
 # Supported MIME types for uploads
 VALID_PDF_MIMES = {'application/pdf'}
 

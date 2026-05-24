@@ -50,6 +50,12 @@ export interface UseUploadReturn {
   errorMessage: string
   /** Count of transactions parsed (only set after successful parse) */
   transactionCount: number
+  /** Statement type: 'bank' or 'credit_card' */
+  statementType: string
+  setStatementType: (type: string) => void
+  /** Billing month for CC statements: 'YYYY-MM' */
+  billingMonth: string
+  setBillingMonth: (month: string) => void
 
   /**
    * Mark a file as selected by user.
@@ -143,6 +149,10 @@ export const useUpload = (onUploadSuccess: (transactions: Transaction[]) => void
   const [errorMessage, setErrorMessage] = useState<string>('')
   const [transactionCount, setTransactionCount] = useState<number>(0)
 
+  // CC statement options — set by UploadModal before handleUpload is called
+  const [statementType, setStatementType] = useState<string>('bank')
+  const [billingMonth, setBillingMonth] = useState<string>('')
+
   /**
    * Handler - User selected file from input or drop zone.
    * Resets error state and marked file ready for upload.
@@ -200,7 +210,9 @@ export const useUpload = (onUploadSuccess: (transactions: Transaction[]) => void
           if (percent === 100) {
             setUploadState('parsing')
           }
-        }
+        },
+        statementType,
+        billingMonth || undefined
       )
 
       // Upload succeeded, update UI with success state
@@ -242,6 +254,8 @@ export const useUpload = (onUploadSuccess: (transactions: Transaction[]) => void
     setUploadProgress(0)
     setErrorMessage('')
     setTransactionCount(0)
+    setStatementType('bank')
+    setBillingMonth('')
   }
 
   return {
@@ -250,6 +264,10 @@ export const useUpload = (onUploadSuccess: (transactions: Transaction[]) => void
     uploadProgress,
     errorMessage,
     transactionCount,
+    statementType,
+    setStatementType,
+    billingMonth,
+    setBillingMonth,
     handleFileSelect,
     handleDropError,
     handleUpload,
