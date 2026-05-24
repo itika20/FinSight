@@ -5,6 +5,12 @@ import type {
   SavedGoalListResponse,
 } from '../models/goals'
 
+interface GoalInvestmentPayload {
+  amount: number
+  date: string        // YYYY-MM-DD
+  note?: string
+}
+
 interface GoalApiPayload {
   goal_amount: number
   goal_months: number
@@ -40,6 +46,30 @@ export const deleteGoalApi = async (goalId: string): Promise<void> => {
  */
 export const toggleExistingSavingsApi = async (goalId: string, count: boolean): Promise<void> => {
   await api.patch(`/goals/${goalId}/existing-savings`, { count_existing_savings: count })
+}
+
+/**
+ * POST /goals/{id}/investments — record a manual investment tagged to this goal.
+ */
+export const addGoalInvestmentApi = async (
+  goalId: string,
+  payload: GoalInvestmentPayload,
+): Promise<{ id: string; message: string }> => {
+  const response = await api.post<{ id: string; message: string }>(
+    `/goals/${goalId}/investments`,
+    payload,
+  )
+  return response.data
+}
+
+/**
+ * DELETE /goals/{id}/investments/{invId} — remove a tagged investment.
+ */
+export const deleteGoalInvestmentApi = async (
+  goalId: string,
+  invId: string,
+): Promise<void> => {
+  await api.delete(`/goals/${goalId}/investments/${invId}`)
 }
 
 /**

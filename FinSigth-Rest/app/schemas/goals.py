@@ -1,5 +1,17 @@
 """
 Pydantic schemas for the goals API.
+
+DB changes required (run manually):
+  CREATE TABLE goal_investments (
+      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id    UUID NOT NULL REFERENCES users(id),
+      goal_id    UUID NOT NULL REFERENCES user_goals(id) ON DELETE CASCADE,
+      amount     DECIMAL(15,2) NOT NULL CHECK (amount > 0),
+      date       DATE NOT NULL DEFAULT CURRENT_DATE,
+      note       VARCHAR(500),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX idx_goal_investments_user_goal ON goal_investments(user_id, goal_id);
 """
 
 from typing import Any, Optional
@@ -142,10 +154,39 @@ class SavedGoal(BaseModel):
     spend_drift: list['CategoryDrift'] = []        # categories with ≥20% spend shift since creation
     current_month: Optional[str] = None            # 'YYYY-MM' of the most recent data month
     current_month_spend: dict[str, float] = {}     # actual spend per category in current_month
+    # Goal-tagged investments (from goal_investments table):
+    tagged_investments: list['GoalInvestment'] = []
+    total_tagged_investment: float = 0.0           # sum of all tagged investment amounts
 
 
 class ToggleExistingSavingsRequest(BaseModel):
     count_existing_savings: bool
+
+
+# ─────────────────────────────────────────────
+# Goal investments: manual tagged savings
+# ─────────────────────────────────────────────
+
+class GoalInvestmentRequest(BaseModel):
+    amount: float
+    date: str                       # YYYY-MM-DD
+    note: Optional[str] = None
+
+    @field_validator('amount')
+    @classmethod
+    def amount_positive(cls, v):
+        if v <= 0:
+            raise ValueError('amount must be positive')
+        return v
+
+
+class GoalInvestment(BaseModel):
+    id: str
+    goal_id: str
+    amount: float
+    date: str                       # YYYY-MM-DD
+    note: Optional[str] = None
+    created_at: str
 
 
 class SavedGoalListResponse(BaseModel):

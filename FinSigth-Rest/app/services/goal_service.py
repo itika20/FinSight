@@ -39,7 +39,7 @@ from app.core.constants import (
     SALARY_SHIFT_DAY,
     TRANSACTION_TYPE_DEBIT,
 )
-from app.schemas.goals import CategoryCutback, CategoryDrift, GoalResponse, SavedGoal, SavedGoalListResponse, MonthlyContribution, GoalTracking
+from app.schemas.goals import CategoryCutback, CategoryDrift, GoalInvestment, GoalResponse, SavedGoal, SavedGoalListResponse, MonthlyContribution, GoalTracking
 
 logger = logging.getLogger(LOGGER_GOALS)
 
@@ -1007,12 +1007,15 @@ def _get_current_category_avgs(user_id: str, conn) -> dict[str, float]:
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT category,
-               SUM(amount)                                        AS total,
-               COUNT(DISTINCT TO_CHAR(date, 'YYYY-MM'))           AS n_months
+        SELECT
+            category,
+            GREATEST(0,
+                SUM(CASE WHEN type = 'debit'  THEN ABS(amount) ELSE 0 END) -
+                SUM(CASE WHEN type = 'credit' THEN ABS(amount) ELSE 0 END)
+            ) AS total_net_spend,
+            COUNT(DISTINCT TO_CHAR(date, 'YYYY-MM')) AS n_months
         FROM transactions
         WHERE user_id = %s
-          AND type = 'debit'
           AND category NOT IN ('Transfers', 'Salary')
           AND TO_CHAR(date, 'YYYY-MM') >= TO_CHAR(
                 DATE_TRUNC('month', NOW()) - INTERVAL '3 months', 'YYYY-MM')
@@ -1023,7 +1026,7 @@ def _get_current_category_avgs(user_id: str, conn) -> dict[str, float]:
     )
     rows = cursor.fetchall()
     return {
-        row['category']: float(row['total']) / int(row['n_months'])
+        row['category']: float(row['total_net_spend']) / int(row['n_months'])
         for row in rows
         if int(row['n_months']) > 0
     }
@@ -1056,10 +1059,14 @@ def _get_latest_month_category_spend(user_id: str, conn) -> tuple[Optional[str],
 
     cursor.execute(
         """
-        SELECT category, SUM(amount) AS total
+        SELECT
+            category,
+            GREATEST(0,
+                SUM(CASE WHEN type = 'debit'  THEN ABS(amount) ELSE 0 END) -
+                SUM(CASE WHEN type = 'credit' THEN ABS(amount) ELSE 0 END)
+            ) AS net_spend
         FROM transactions
         WHERE user_id = %s
-          AND type = 'debit'
           AND category NOT IN ('Transfers', 'Salary')
           AND TO_CHAR(date, 'YYYY-MM') = %s
         GROUP BY category
@@ -1067,7 +1074,7 @@ def _get_latest_month_category_spend(user_id: str, conn) -> tuple[Optional[str],
         (user_id, latest_month),
     )
     rows = cursor.fetchall()
-    return latest_month, {row['category']: float(row['total']) for row in rows}
+    return latest_month, {row['category']: float(row['net_spend']) for row in rows}
 
 
 def get_saved_goals(user_id: str, conn) -> SavedGoalListResponse:
@@ -1097,6 +1104,7 @@ def get_saved_goals(user_id: str, conn) -> SavedGoalListResponse:
 
     current_cat_avgs = _get_current_category_avgs(user_id, conn)
     latest_month, latest_month_spend = _get_latest_month_category_spend(user_id, conn)
+    investments_by_goal = _get_investments_by_goal(user_id, conn)
 
     # Build lightweight goal info for tracking computation
     goal_infos = [
@@ -1179,6 +1187,9 @@ def get_saved_goals(user_id: str, conn) -> SavedGoalListResponse:
                     drift_pct=round(drift_pct, 1),
                 ))
 
+        goal_investments_list = investments_by_goal.get(str(row['id']), [])
+        total_tagged = sum(inv.amount for inv in goal_investments_list)
+
         goals.append(SavedGoal(
             id=str(row['id']),
             goal_name=row['goal_name'],
@@ -1202,6 +1213,8 @@ def get_saved_goals(user_id: str, conn) -> SavedGoalListResponse:
             spend_drift=spend_drift,
             current_month=latest_month,
             current_month_spend=latest_month_spend,
+            tagged_investments=goal_investments_list,
+            total_tagged_investment=round(total_tagged, 2),
         ))
 
     return SavedGoalListResponse(
@@ -1212,6 +1225,98 @@ def get_saved_goals(user_id: str, conn) -> SavedGoalListResponse:
         total_required_monthly_saving=round(total_required, 2),
         total_committed_cutback=round(total_cutback, 2),
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Goal investments (goal_investments table)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def add_goal_investment(
+    user_id: str,
+    goal_id: str,
+    amount: float,
+    date: str,
+    note: Optional[str],
+    conn,
+) -> str:
+    """
+    Record a manual investment tagged to a specific goal.
+    Returns the new investment id.
+    Raises 404 if goal_id doesn't exist / belong to this user.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM user_goals WHERE id = %s AND user_id = %s",
+        (goal_id, user_id),
+    )
+    if not cursor.fetchone():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found.")
+    cursor.execute(
+        """
+        INSERT INTO goal_investments (user_id, goal_id, amount, date, note)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (user_id, goal_id, amount, date, note),
+    )
+    row = cursor.fetchone()
+    inv_id = str(row['id'])
+    logger.info(
+        "[goal_service] Investment id=%s goal=%s user=%s amount=%.0f",
+        inv_id, goal_id, user_id, amount,
+    )
+    return inv_id
+
+
+def delete_goal_investment(user_id: str, goal_id: str, inv_id: str, conn) -> None:
+    """
+    Remove a tagged investment.
+    Raises 404 if not found or doesn't belong to this user / goal.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        DELETE FROM goal_investments
+        WHERE id = %s AND user_id = %s AND goal_id = %s
+        RETURNING id
+        """,
+        (inv_id, user_id, goal_id),
+    )
+    if not cursor.fetchone():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investment not found.")
+    logger.info("[goal_service] Deleted investment id=%s user=%s", inv_id, user_id)
+
+
+def _get_investments_by_goal(user_id: str, conn) -> dict[str, list[GoalInvestment]]:
+    """
+    Fetch all goal_investments rows for a user, grouped by goal_id.
+    Used inside get_saved_goals to attach tagged investments to each SavedGoal.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, goal_id, amount,
+               TO_CHAR(date, 'YYYY-MM-DD')            AS date,
+               note,
+               TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+        FROM goal_investments
+        WHERE user_id = %s
+        ORDER BY date ASC, created_at ASC
+        """,
+        (user_id,),
+    )
+    result: dict[str, list[GoalInvestment]] = {}
+    for row in cursor.fetchall():
+        gid = str(row['goal_id'])
+        result.setdefault(gid, []).append(GoalInvestment(
+            id=str(row['id']),
+            goal_id=gid,
+            amount=float(row['amount']),
+            date=row['date'],
+            note=row['note'],
+            created_at=row['created_at'],
+        ))
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────

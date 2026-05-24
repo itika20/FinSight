@@ -290,7 +290,9 @@ const CreateGoalModal = ({
     ? goalData.available_monthly_saving + userSelectedSaving
     : 0
 
-  const canSave = goalData ? (covered >= goalData.required_monthly_saving) : false
+  // 0.3% tolerance matches PlanHealthBar — handles ML floating-point rounding
+  // where allocate_cutbacks() leaves a tiny residual (e.g. ₹136 on ₹50,000).
+  const canSave = goalData ? (covered >= goalData.required_monthly_saving * 0.997) : false
 
   // ─── Save plan ────────────────────────────────────────────────
   const handleSave = async () => {
@@ -647,6 +649,16 @@ const CreateGoalModal = ({
                 covered={covered}
                 required={goalData.required_monthly_saving}
               />
+              {/* Spending behavior coverage % */}
+              {userSelectedSaving > 0 && goalData.required_monthly_saving > 0 && (
+                <p className="text-xs text-gray-400 mt-1 mb-1">
+                  Spending adjustments cover{' '}
+                  <span className="font-medium text-gray-600">
+                    {Math.round((userSelectedSaving / goalData.required_monthly_saving) * 100)}%
+                  </span>{' '}
+                  of your ₹{fmt(goalData.required_monthly_saving)}/month target
+                </p>
+              )}
 
               {/* 4 · Recommendation cards */}
               {recommendations.length === 0 ? (

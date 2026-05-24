@@ -65,6 +65,17 @@ export interface RecommendationDecision {
   amount: number
 }
 
+// ─── Goal investments ─────────────────────────────────────────────────────────
+
+export interface GoalInvestment {
+  id: string
+  goal_id: string
+  amount: number
+  date: string          // YYYY-MM-DD
+  note?: string
+  created_at: string
+}
+
 // ─── Goal tracking ────────────────────────────────────────────────────────────
 
 export interface MonthlyContribution {
@@ -114,6 +125,9 @@ export interface SavedGoal {
   spend_drift?: CategoryDrift[]       // categories with ≥20% spend shift since creation
   current_month?: string              // 'YYYY-MM' of the most recent data month
   current_month_spend?: Record<string, number>  // actual spend per category in current_month
+  // Goal-tagged investments (from goal_investments table):
+  tagged_investments?: GoalInvestment[]
+  total_tagged_investment?: number    // sum of all tagged investment amounts
 }
 
 export interface SavedGoalListResponse {

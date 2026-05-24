@@ -15,6 +15,7 @@ from app.api.auth import get_current_user
 from app.core.constants import LOGGER_GOALS
 from app.core.database import get_db
 from app.schemas.goals import (
+    GoalInvestmentRequest,
     GoalRequest,
     GoalResponse,
     GoalSaveRequest,
@@ -133,6 +134,42 @@ def recalculate_savings(
     with get_db() as conn:
         accumulated = goal_service.recalculate_savings(user_id, goal_id, conn)
     return {'accumulated_savings_at_creation': accumulated, 'message': 'Savings recalculated.'}
+
+
+@router.post('/{goal_id}/investments', response_model=dict)
+def add_goal_investment(
+    goal_id: str,
+    body: GoalInvestmentRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Record a manual investment tagged to this goal."""
+    user_id = current_user['id']
+    logger.info(
+        "[goals] POST /goals/%s/investments user=%s amount=%.0f",
+        goal_id, user_id, body.amount,
+    )
+    with get_db() as conn:
+        inv_id = goal_service.add_goal_investment(
+            user_id, goal_id, body.amount, body.date, body.note, conn
+        )
+    return {'id': inv_id, 'message': 'Investment recorded.'}
+
+
+@router.delete('/{goal_id}/investments/{inv_id}', response_model=dict)
+def delete_goal_investment(
+    goal_id: str,
+    inv_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Remove a tagged investment from a goal."""
+    user_id = current_user['id']
+    logger.info(
+        "[goals] DELETE /goals/%s/investments/%s user=%s",
+        goal_id, inv_id, user_id,
+    )
+    with get_db() as conn:
+        goal_service.delete_goal_investment(user_id, goal_id, inv_id, conn)
+    return {'message': 'Investment removed.'}
 
 
 @router.delete('/{goal_id}', response_model=dict)

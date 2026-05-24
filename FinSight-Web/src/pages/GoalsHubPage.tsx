@@ -31,6 +31,13 @@ const targetDateLabel = (months: number, createdAt: string): string => {
 const activeCutbackCount = (goal: SavedGoal): number =>
   Object.values(goal.decisions).filter(d => d.status !== 'skipped').length
 
+/** Months elapsed since goal creation (minimum 1). */
+const goalAgeMonths = (createdAt: string): number => {
+  const created = new Date(createdAt)
+  const now = new Date()
+  return Math.max(1, (now.getFullYear() - created.getFullYear()) * 12 + (now.getMonth() - created.getMonth()))
+}
+
 // ─── component ─────────────────────────────────────────────────────────────────
 const GoalsHubPage = () => {
   const navigate   = useNavigate()
@@ -201,9 +208,31 @@ const GoalsHubPage = () => {
           <div className="flex flex-col gap-4">
             {goals.map(goal => {
               const isDeleting = deletingId === goal.id
-              const statusLabel = GOAL_STATUS_LABELS[goal.status] ?? goal.status
-              const statusClass = GOAL_STATUS_BADGE[goal.status] ?? 'bg-gray-100 text-gray-600'
               const cutbackCount = activeCutbackCount(goal)
+
+              // Tagged investment progress
+              const taggedTotal     = goal.total_tagged_investment ?? 0
+              const existingContrib = goal.count_existing_savings ? goal.accumulated_savings_at_creation : 0
+              const combinedSaved   = existingContrib + taggedTotal
+              const progressPct     = Math.min((combinedSaved / goal.goal_amount) * 100, 100)
+              const ageMonths       = goalAgeMonths(goal.created_at)
+              const avgMonthly      = taggedTotal / ageMonths
+              const investStatus    = avgMonthly >= goal.required_monthly_saving        ? 'ahead'
+                                    : avgMonthly >= goal.required_monthly_saving * 0.8  ? 'on_track'
+                                    : 'behind'
+              const remaining       = Math.max(0, goal.goal_amount - combinedSaved)
+              const projMonths      = avgMonthly > 0 ? Math.ceil(remaining / avgMonthly) : null
+
+              // Badge uses investment-based status when investments exist, else backend status
+              const displayStatus = taggedTotal > 0 ? investStatus : goal.status
+              const statusLabel   = taggedTotal > 0
+                ? (investStatus === 'ahead' ? 'Ahead' : investStatus === 'on_track' ? 'On track' : 'Behind')
+                : (GOAL_STATUS_LABELS[goal.status] ?? goal.status)
+              const statusClass   = taggedTotal > 0
+                ? (investStatus === 'ahead'    ? 'bg-green-100 text-green-800'
+                 : investStatus === 'on_track' ? 'bg-blue-100 text-blue-800'
+                 :                               'bg-amber-100 text-amber-800')
+                : (GOAL_STATUS_BADGE[displayStatus] ?? 'bg-gray-100 text-gray-600')
 
               return (
                 <div
@@ -230,49 +259,46 @@ const GoalsHubPage = () => {
                     </p>
                   </div>
 
-                  {/* Tracking progress bar */}
-                  {goal.tracking && goal.tracking.months_elapsed > 0 && (
-                    <div className="mb-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-400">Progress</span>
-                        <span className="text-xs font-medium text-gray-500">
-                          {goal.tracking.progress_pct.toFixed(1)}% · ₹{fmt(goal.tracking.cumulative_contribution)} saved
-                        </span>
-                      </div>
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  {/* Investment progress bar */}
+                  <div className="mb-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-400">Progress</span>
+                      <span className="text-xs font-medium text-gray-500">
+                        {taggedTotal > 0
+                          ? `${progressPct.toFixed(1)}% · ₹${fmt(combinedSaved)} saved`
+                          : '0% · no investments recorded yet'}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden flex">
+                      {existingContrib > 0 && (
                         <div
-                          className="h-full rounded-full transition-all duration-300"
+                          className="h-full flex-shrink-0"
+                          style={{ width: `${Math.min((existingContrib / goal.goal_amount) * 100, 100)}%`, backgroundColor: '#14b8a6' }}
+                        />
+                      )}
+                      {taggedTotal > 0 && (
+                        <div
+                          className="h-full flex-shrink-0 transition-all duration-300"
                           style={{
-                            width: `${Math.min(goal.tracking.progress_pct, 100)}%`,
-                            backgroundColor: goal.tracking.overall_status === 'ahead' ? '#10b981'
-                              : goal.tracking.overall_status === 'on_track' ? '#3b82f6'
-                              : '#f59e0b',
+                            width: `${Math.min((taggedTotal / goal.goal_amount) * 100, 100 - (existingContrib / goal.goal_amount) * 100)}%`,
+                            backgroundColor: '#10b981',
                           }}
                         />
-                      </div>
+                      )}
                     </div>
-                  )}
-                  {(!goal.tracking || goal.tracking.months_elapsed === 0) && (
-                    <div className="mb-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-400">Progress</span>
-                        <span className="text-xs font-medium text-gray-500">0% · tracking starts this month</span>
-                      </div>
-                      <div className="h-2 bg-gray-100 rounded-full" />
-                    </div>
-                  )}
+                  </div>
 
                   {/* Cutback summary */}
                   {cutbackCount > 0 && (
-                    <p className="text-xs text-gray-400 mb-3">
+                    <p className="text-xs text-gray-400 mb-1">
                       {cutbackCount} spending cutback{cutbackCount !== 1 ? 's' : ''} planned
                       {' · '}₹{fmt(goal.total_monthly_cutback)}/mo committed
                     </p>
                   )}
-                  {goal.tracking && goal.tracking.projected_months_to_goal != null && (
-                    <p className="text-xs text-gray-400 mb-3">
-                      At current pace: goal in ~{Math.ceil(goal.tracking.projected_months_to_goal)} months
-                      {goal.tracking.projected_months_to_goal <= goal.goal_months ? ' ✓' : ' (behind schedule)'}
+                  {projMonths !== null && (
+                    <p className="text-xs text-gray-400 mb-1">
+                      At current pace: goal in ~{projMonths} months
+                      {projMonths <= goal.goal_months ? ' ✓' : ' (behind schedule)'}
                     </p>
                   )}
 

@@ -361,6 +361,9 @@ def heuristic_guess(
     Used when Layer 1 (regex) and Layer 2 (VPA memory) fail.
 
     Heuristic Rules:
+    0. Exact ₹26 → 'Transport'
+       (confidence: low — fixed city bus fare: BEST, BMTC, DTC, etc.)
+
     1. Person-to-person VPA → likely 'Transfers'
        (confidence: medium — assumes p2p transfer)
 
@@ -406,6 +409,11 @@ def heuristic_guess(
     ('Transfers', 'low')
     """
     abs_amount = abs(amount)
+
+    # ₹26 exact = city bus / local public transport fare (BEST, BMTC, DTC, etc.)
+    # This is a fixed fare amount used across most Indian city bus networks.
+    if round(abs_amount, 2) == 26.00:
+        return 'Transport', 'low'
 
     # Person-to-person transfer — phone number VPA
     if vpa_type == 'person':
