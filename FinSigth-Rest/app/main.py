@@ -5,6 +5,7 @@ FastAPI server for personal finance analysis with JWT authentication and PDF par
 
 import logging
 import logging.handlers
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -70,21 +71,19 @@ app = FastAPI(
     description="Personal finance analyzer with AI-powered PDF parsing"
 )
 
-# Configure CORS (Cross-Origin Resource Sharing)
-# Allows frontend (running on different port) to make requests to backend
-cors_origins = [
-    "http://localhost:5173",  # Vite dev server (frontend)
-]
+# Configure CORS — always allow localhost dev server plus the
+# production frontend URL set via the FRONTEND_URL environment variable.
+_frontend_url = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
+cors_origins = [o for o in ["http://localhost:5173", _frontend_url] if o]
 
-if True:  # Only enable in dev
-    logger.info(f"CORS enabled for origins: {cors_origins}")
+logger.info("CORS enabled for origins: %s", cors_origins)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,  # Allow cookies/auth headers
-    allow_methods=["*"],     # Allow all HTTP methods
-    allow_headers=["*"],     # Allow all headers
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include routers
