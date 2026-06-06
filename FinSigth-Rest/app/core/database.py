@@ -35,7 +35,9 @@ def get_connection():
     try:
         # Parse URL manually so the dot in pooler usernames like
         # postgres.PROJECT_REF is passed as a plain string to psycopg2.
-        parsed = urlparse(settings.DATABASE_URL)
+        # Strip any brackets Supabase adds around the hostname (e.g. [host]).
+        url = settings.DATABASE_URL.replace('[@', '@').replace('[', '').replace(']', '')
+        parsed = urlparse(url)
         conn = psycopg2.connect(
             host=parsed.hostname,
             port=parsed.port or 5432,
