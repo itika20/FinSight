@@ -1,0 +1,6 @@
+venv/
+artifacts/
+data/training_data.csv
+__pycache__/
+*.pyc
+.env
