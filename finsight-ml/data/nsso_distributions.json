@@ -1,0 +1,66 @@
+{
+  "_source": "NSSO Household Consumer Expenditure Survey 2022-23, mapped to FinSight taxonomy",
+  "_note": "Used to parameterise synthetic data generation in generate_synthetic.py",
+  "income_brackets": {
+    "low":     { "range_inr": [15000, 30000],   "synthetic_count": 1500 },
+    "medium":  { "range_inr": [30000, 75000],   "synthetic_count": 2000 },
+    "high":    { "range_inr": [75000, 150000],  "synthetic_count": 1000 },
+    "premium": { "range_inr": [150000, 400000], "synthetic_count": 500  }
+  },
+  "spending_proportions": {
+    "low": {
+      "_nsso_note": "Food+beverages ~45%, transport ~8%, housing/utilities ~20%, healthcare ~7%",
+      "food":          { "mean": 0.35, "std": 0.08 },
+      "groceries":     { "mean": 0.12, "std": 0.03 },
+      "transport":     { "mean": 0.08, "std": 0.02 },
+      "utilities":     { "mean": 0.15, "std": 0.03 },
+      "healthcare":    { "mean": 0.07, "std": 0.04 },
+      "shopping":      { "mean": 0.05, "std": 0.02 },
+      "entertainment": { "mean": 0.02, "std": 0.01 },
+      "investments":   { "mean": 0.01, "std": 0.01 },
+      "fuel":          { "mean": 0.04, "std": 0.02 }
+    },
+    "medium": {
+      "_nsso_note": "Food share drops to ~25%, shopping/entertainment rise, investments become meaningful",
+      "food":          { "mean": 0.20, "std": 0.06 },
+      "groceries":     { "mean": 0.12, "std": 0.03 },
+      "transport":     { "mean": 0.10, "std": 0.03 },
+      "utilities":     { "mean": 0.10, "std": 0.03 },
+      "healthcare":    { "mean": 0.05, "std": 0.03 },
+      "shopping":      { "mean": 0.10, "std": 0.04 },
+      "entertainment": { "mean": 0.05, "std": 0.02 },
+      "investments":   { "mean": 0.08, "std": 0.04 },
+      "fuel":          { "mean": 0.06, "std": 0.02 }
+    },
+    "high": {
+      "_nsso_note": "Shopping and investments dominate growth, food ~18%",
+      "food":          { "mean": 0.15, "std": 0.05 },
+      "groceries":     { "mean": 0.10, "std": 0.03 },
+      "transport":     { "mean": 0.08, "std": 0.02 },
+      "utilities":     { "mean": 0.08, "std": 0.02 },
+      "healthcare":    { "mean": 0.04, "std": 0.02 },
+      "shopping":      { "mean": 0.15, "std": 0.05 },
+      "entertainment": { "mean": 0.08, "std": 0.03 },
+      "investments":   { "mean": 0.12, "std": 0.05 },
+      "fuel":          { "mean": 0.07, "std": 0.02 }
+    },
+    "premium": {
+      "_nsso_note": "Investment-heavy (~20%), food share falls to ~10%",
+      "food":          { "mean": 0.10, "std": 0.04 },
+      "groceries":     { "mean": 0.08, "std": 0.02 },
+      "transport":     { "mean": 0.06, "std": 0.02 },
+      "utilities":     { "mean": 0.06, "std": 0.02 },
+      "healthcare":    { "mean": 0.03, "std": 0.02 },
+      "shopping":      { "mean": 0.18, "std": 0.06 },
+      "entertainment": { "mean": 0.12, "std": 0.04 },
+      "investments":   { "mean": 0.20, "std": 0.07 },
+      "fuel":          { "mean": 0.05, "std": 0.02 }
+    }
+  },
+  "volatility_by_bracket": {
+    "low":     { "mean": 0.22, "std": 0.06 },
+    "medium":  { "mean": 0.14, "std": 0.04 },
+    "high":    { "mean": 0.09, "std": 0.03 },
+    "premium": { "mean": 0.06, "std": 0.02 }
+  }
+}
