@@ -5,6 +5,7 @@ Provides safe database connection handling with automatic transaction management
 
 import logging
 from contextlib import contextmanager
+from urllib.parse import urlparse, unquote
 
 import psycopg2
 import psycopg2.extras
@@ -32,9 +33,17 @@ def get_connection():
     """
     logger.debug("Creating new database connection")
     try:
+        # Parse URL manually so the dot in pooler usernames like
+        # postgres.PROJECT_REF is passed as a plain string to psycopg2.
+        parsed = urlparse(settings.DATABASE_URL)
         conn = psycopg2.connect(
-            settings.DATABASE_URL,
-            cursor_factory=psycopg2.extras.RealDictCursor
+            host=parsed.hostname,
+            port=parsed.port or 5432,
+            dbname=parsed.path.lstrip('/'),
+            user=unquote(parsed.username),
+            password=unquote(parsed.password),
+            sslmode='require',
+            cursor_factory=psycopg2.extras.RealDictCursor,
         )
         logger.debug("Database connection established")
         return conn
