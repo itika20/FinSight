@@ -15,6 +15,7 @@ interface GoalApiPayload {
   goal_amount: number
   goal_months: number
   income_override?: number
+  exclude_goal_id?: string  // set when adjusting an existing goal; prevents it being counted as committed saving
 }
 
 /** POST /goals — run ML pipeline, returns ranked recommendations. */

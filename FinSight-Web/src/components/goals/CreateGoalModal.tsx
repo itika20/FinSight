@@ -177,6 +177,7 @@ const CreateGoalModal = ({
       const result = await getGoalPlanApi({
         goal_amount: amount,
         goal_months: months,
+        exclude_goal_id: initialGoal?.id,
       })
       console.log('[CreateGoalModal] API response: cluster=%d recs=%d', result.cluster_id, result.recommendations.length)
       setGoalData(result)
@@ -235,6 +236,7 @@ const CreateGoalModal = ({
       const result = await getGoalPlanApi({
         goal_amount: newAmount,
         goal_months: adjustMonths,
+        exclude_goal_id: initialGoal?.id,
       })
       // Sync Phase A state so save payload stays consistent
       setAmountDisplay(adjustAmountDisplay)

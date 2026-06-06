@@ -26,6 +26,7 @@ class GoalRequest(BaseModel):
     goal_amount: float
     goal_months: int
     income_override: Optional[float] = None   # user-supplied income if estimate is wrong
+    exclude_goal_id: Optional[str] = None     # set when adjusting an existing goal so it isn't counted as committed saving
 
     @field_validator('goal_amount')
     @classmethod

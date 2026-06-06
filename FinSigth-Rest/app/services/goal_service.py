@@ -263,16 +263,22 @@ def build_user_profile(
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 2 -- How much saving is already committed to other saved goals?
 # ─────────────────────────────────────────────────────────────────────────────
-def get_committed_saving(user_id: str, conn) -> float:
+def get_committed_saving(user_id: str, conn, exclude_goal_id: Optional[str] = None) -> float:
     """
     Returns the sum of required_monthly_saving across all saved goals for this user.
-    Used to compute available_monthly_saving = current_saving - committed.
+    Pass exclude_goal_id when adjusting an existing goal so it isn't double-counted.
     """
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT COALESCE(SUM(required_monthly_saving), 0) AS committed FROM user_goals WHERE user_id = %s",
-        (user_id,),
-    )
+    if exclude_goal_id:
+        cursor.execute(
+            "SELECT COALESCE(SUM(required_monthly_saving), 0) AS committed FROM user_goals WHERE user_id = %s AND id != %s",
+            (user_id, exclude_goal_id),
+        )
+    else:
+        cursor.execute(
+            "SELECT COALESCE(SUM(required_monthly_saving), 0) AS committed FROM user_goals WHERE user_id = %s",
+            (user_id,),
+        )
     row = cursor.fetchone()
     return float(row['committed'])
 
@@ -477,6 +483,7 @@ def compute_goal_plan(
     benchmarks: dict,
     conn,
     income_override: Optional[float] = None,
+    exclude_goal_id: Optional[str] = None,
 ) -> GoalResponse:
     profile = build_user_profile(user_id, conn, income_override)
     cluster_id = assign_cluster(profile, cluster_model, cluster_scaler)
@@ -488,8 +495,9 @@ def compute_goal_plan(
     income = profile['monthly_income_estimate']
     current_saving = profile['savings_rate'] * income
 
-    # Subtract saving already committed to other saved goals
-    committed_saving = get_committed_saving(user_id, conn)
+    # Subtract saving already committed to other saved goals.
+    # exclude_goal_id prevents double-counting when the user is adjusting an existing goal.
+    committed_saving = get_committed_saving(user_id, conn, exclude_goal_id)
     available_saving = max(current_saving - committed_saving, 0.0)
 
     required_saving = goal_amount / goal_months

@@ -66,6 +66,7 @@ def create_goal_plan(
             benchmarks=request.app.state.cluster_benchmarks,
             conn=conn,
             income_override=body.income_override,
+            exclude_goal_id=body.exclude_goal_id,
         )
     return result
 

@@ -184,7 +184,7 @@ const TransactionTable = () => {
       {/* min-h ensures the container never collapses shorter than the filter dropdown.
           overflow-x-auto implicitly sets overflow-y:auto which clips absolutely-positioned
           children; without min-h the dropdown is invisible when tbody is empty. */}
-      <div className="overflow-x-auto min-h-[400px]">
+      <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100">
